@@ -57,7 +57,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname;
   try {
-    if (path === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok', service: 'flowboard' });
+    if (path === '/health' && req.method === 'GET') return json(res, 200, { status: 'ok', service: 'flow' });
     if (path === '/api/auth' && req.method === 'GET') return json(res, 200, { user: currentUser(req) });
     if (path === '/api/auth/register' && req.method === 'POST') {
       const { name, email, password } = await body(req);
