@@ -112,7 +112,7 @@ export class WorkflowChart {
     const nodeHeight = 68;
     const marker = `arrow-${this.definition.id}`;
     const edgeSvg = edges
-      .map((edge) => {
+      .map((edge, index) => {
         const a = positions.get(edge.from),
           b = positions.get(edge.to);
         if (!a || !b) return '';
@@ -122,7 +122,21 @@ export class WorkflowChart {
           approachX = x2 - (x2 - x1) * 0.2,
           approachY = b.y - (b.y - a.y) * 0.2;
         const path = `M${x1} ${a.y} C${mid} ${a.y},${approachX} ${approachY},${x2} ${b.y}`;
-        return `<g class="chart-edge" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/><text class="chart-edge-description" x="${mid}" y="${(a.y + b.y) / 2 - 8}">${escapeXml(edge.condition || '')}</text></g>`;
+        return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/></g>`;
+      })
+      .join('');
+    const edgeDescriptionSvg = edges
+      .map((edge, index) => {
+        if (!edge.condition) return '';
+        const a = positions.get(edge.from),
+          b = positions.get(edge.to);
+        if (!a || !b) return '';
+        const x1 = a.x + nodeWidth / 2,
+          x2 = b.x - nodeWidth / 2,
+          x = (x1 + x2) / 2,
+          y = (a.y + b.y) / 2 - 8,
+          bubbleWidth = Math.max(64, Math.min(520, String(edge.condition).length * 6.5 + 32));
+        return `<g class="chart-edge-description" data-edge-description="${index}" transform="translate(${x} ${y})"><rect x="${-bubbleWidth / 2}" y="-19" width="${bubbleWidth}" height="30" rx="7"/><text y="1">${escapeXml(edge.condition)}</text></g>`;
       })
       .join('');
     const nodeSvg = nodes
@@ -132,20 +146,33 @@ export class WorkflowChart {
         return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
-    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}</svg>`;
+    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}<g class="chart-edge-descriptions">${edgeDescriptionSvg}</g></svg>`;
     this.bindInteractions();
   }
 
   bindInteractions() {
-    if (!this.onNodeSelect) return;
-    this.container.querySelectorAll('[data-node-key]').forEach((element) => {
-      const select = () => this.onNodeSelect(element.dataset.nodeKey);
-      element.addEventListener('click', select);
-      element.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        select();
+    if (this.onNodeSelect) {
+      this.container.querySelectorAll('[data-node-key]').forEach((element) => {
+        const select = () => this.onNodeSelect(element.dataset.nodeKey);
+        element.addEventListener('click', select);
+        element.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          select();
+        });
       });
+    }
+    this.container.querySelectorAll('[data-edge-index]').forEach((element) => {
+      const description = this.container.querySelector(
+        `[data-edge-description="${element.dataset.edgeIndex}"]`,
+      );
+      if (!description) return;
+      const show = () => description.classList.add('visible');
+      const hide = () => description.classList.remove('visible');
+      element.addEventListener('pointerenter', show);
+      element.addEventListener('pointerleave', hide);
+      element.addEventListener('focus', show);
+      element.addEventListener('blur', hide);
     });
   }
 
