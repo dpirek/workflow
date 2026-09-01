@@ -3,7 +3,16 @@ import { mountWorkflowCharts } from './components/workflow-chart.js';
 
 const app = document.querySelector('#app'),
   router = new Router();
-let state = { user: null, view: 'overview', workflows: [], instances: [], tasks: [], jobs: [], incidents: [] };
+let state = {
+  user: null,
+  view: 'overview',
+  workflowId: null,
+  workflows: [],
+  instances: [],
+  tasks: [],
+  jobs: [],
+  incidents: [],
+};
 let workflowCharts = [];
 const api = (p, o = {}) =>
   fetch(p, { headers: { 'content-type': 'application/json' }, ...o }).then(async (r) => {
@@ -64,7 +73,7 @@ function render() {
     ['instances', 'Instances'],
     ['tasks', 'Tasks'],
   ];
-  app.innerHTML = `<div class="shell"><aside><div class="brand">✦<b>Flowboard</b></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id ? 'active' : ''}" data-path="/${id}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout">↗</button></div></aside><main class="content"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${state.view[0].toUpperCase() + state.view.slice(1)}</h1></div><button id="refresh" class="refresh">↻</button></header>${page()}</main></div>`;
+  app.innerHTML = `<div class="shell"><aside><div class="brand">✦<b>Flowboard</b></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && state.view === 'workflow-detail') ? 'active' : ''}" data-path="/${id}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout">↗</button></div></aside><main class="content"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div><button id="refresh" class="refresh" aria-label="Refresh">↻</button></header>${page()}</main></div>`;
   document.querySelectorAll('[data-path]').forEach((b) => (b.onclick = () => router.navigate(b.dataset.path)));
   document.querySelector('#refresh').onclick = load;
   document.querySelector('#logout').onclick = async () => {
@@ -72,12 +81,13 @@ function render() {
     state.user = null;
     router.navigate('/login');
   };
-  if (state.view === 'workflows') workflowCharts = mountWorkflowCharts(app, state.workflows);
+  if (state.view === 'workflow-detail') workflowCharts = mountWorkflowCharts(app, state.workflows);
 }
 
 function page() {
   if (state.view === 'workflows')
-    return `<div class="workflow-grid">${state.workflows.map((w) => `<section class="panel workflow-card"><div class="panel-head"><div><h2>${esc(w.name)}</h2><p class="muted">${esc(w.key)} · version ${w.version}</p></div><label class="status">${esc(w.status)}</label></div><div class="graph-wrap" data-workflow-chart="${w.id}"></div></section>`).join('') || '<div class="empty">No workflows deployed yet.</div>'}</div>`;
+    return workflowList();
+  if (state.view === 'workflow-detail') return workflowDetail();
   if (state.view === 'instances')
     return panel(
       'Process instances',
@@ -93,6 +103,35 @@ function page() {
     state.instances.slice(0, 5).map((i) => [i.processKey, i.businessKey || 'No business key', i.status]),
   )}`;
 }
+
+function pageTitle() {
+  if (state.view !== 'workflow-detail') return state.view[0].toUpperCase() + state.view.slice(1);
+  return esc(state.workflows.find((workflow) => String(workflow.id) === state.workflowId)?.name || 'Workflow');
+}
+
+function workflowList() {
+  if (!state.workflows.length) return '<section class="panel empty">No workflows deployed yet.</section>';
+  return `<section class="panel workflow-list"><div class="panel-head"><div><h2>Workflow definitions</h2><p class="muted">Select a workflow to inspect its definition.</p></div><em>${state.workflows.length}</em></div>${state.workflows
+    .map((workflow) => {
+      const running = state.instances.filter(
+        (instance) => instance.processKey === workflow.key && instance.status === 'RUNNING',
+      ).length;
+      return `<button class="workflow-list-item" data-path="/workflows/${encodeURIComponent(workflow.id)}"><span class="workflow-list-icon">◇</span><span class="workflow-list-name"><b>${esc(workflow.name)}</b><small>${esc(workflow.key)} · version ${workflow.version}</small></span><span class="workflow-list-meta"><small>${workflow.nodes?.length || 0} nodes</small><small>${running} running</small></span><label class="status">${esc(workflow.status)}</label><span class="workflow-list-arrow">→</span></button>`;
+    })
+    .join('')}</section>`;
+}
+
+function workflowDetail() {
+  const workflow = state.workflows.find((item) => String(item.id) === state.workflowId);
+  if (!workflow) {
+    return `<section class="panel workflow-not-found"><h2>Workflow not found</h2><p class="muted">This definition may have been removed.</p><button class="secondary" data-path="/workflows">← Back to workflows</button></section>`;
+  }
+
+  const instances = state.instances.filter((instance) => instance.processKey === workflow.key);
+  const running = instances.filter((instance) => instance.status === 'RUNNING').length;
+  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>INSTANCES</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Workflow nodes and transitions.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>`;
+}
+
 function panel(title, rows) {
   return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2><p class="muted">Live data from SQLite.</p></div><em>${rows.length}</em></div>${rows.map((r) => `<div class="row"><span class="dot">◇</span><div><b>${esc(r[0])}</b><small>${esc(r[1])}</small></div><label class="status">${esc(r[2])}</label></div>`).join('') || '<div class="empty">Nothing to show yet.</div>'}</section>`;
 }
@@ -105,6 +144,12 @@ router
   })
   .addRoute('/workflows', () => {
     state.view = 'workflows';
+    state.workflowId = null;
+    render();
+  })
+  .addRoute('/workflows/:id', ({ params }) => {
+    state.view = 'workflow-detail';
+    state.workflowId = params.id;
     render();
   })
   .addRoute('/instances', () => {

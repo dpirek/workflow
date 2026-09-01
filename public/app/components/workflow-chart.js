@@ -59,19 +59,27 @@ export class WorkflowChart {
     const rank = new Map();
     const queue = nodes.filter((n) => !incoming.get(n.key)?.length).map((n) => n.key);
     queue.forEach((key) => rank.set(key, 0));
-    while (queue.length) {
-      const key = queue.shift();
-      for (const edge of outgoing.get(key) || []) {
-        const next = Math.max(rank.get(edge.to) || 0, (rank.get(key) || 0) + 1);
-        if (next !== rank.get(edge.to)) {
-          rank.set(edge.to, next);
+
+    let nextUnranked = 0;
+    while (rank.size < nodes.length) {
+      if (!queue.length) {
+        while (nextUnranked < nodes.length && rank.has(nodes[nextUnranked].key)) nextUnranked += 1;
+        if (nextUnranked < nodes.length) {
+          const key = nodes[nextUnranked].key;
+          rank.set(key, Math.max(0, ...rank.values()) + 1);
+          queue.push(key);
+        }
+      }
+
+      while (queue.length) {
+        const key = queue.shift();
+        for (const edge of outgoing.get(key) || []) {
+          if (rank.has(edge.to)) continue;
+          rank.set(edge.to, rank.get(key) + 1);
           queue.push(edge.to);
         }
       }
     }
-    nodes.forEach((n, i) => {
-      if (!rank.has(n.key)) rank.set(n.key, i);
-    });
     const columns = new Map();
     nodes.forEach((n) => {
       const r = rank.get(n.key);
