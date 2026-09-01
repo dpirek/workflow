@@ -70,7 +70,7 @@ function render() {
   const menu = [
     ['overview', 'Overview'],
     ['workflows', 'Workflows'],
-    ['instances', 'Instances'],
+    ['requests', 'Requests'],
     ['tasks', 'Tasks'],
   ];
   app.innerHTML = `<div class="shell"><aside><div class="brand">✦<b>Flowboard</b></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && state.view === 'workflow-detail') ? 'active' : ''}" data-path="/${id}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout">↗</button></div></aside><main class="content"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div><button id="refresh" class="refresh" aria-label="Refresh">↻</button></header>${page()}</main></div>`;
@@ -87,9 +87,9 @@ function render() {
 function page() {
   if (state.view === 'workflows') return workflowList();
   if (state.view === 'workflow-detail') return workflowDetail();
-  if (state.view === 'instances')
+  if (state.view === 'requests')
     return panel(
-      'Process instances',
+      'Workflow requests',
       state.instances.map((i) => [i.processKey, i.businessKey || '—', i.status]),
     );
   if (state.view === 'tasks')
@@ -97,7 +97,7 @@ function page() {
       'Human tasks',
       state.tasks.map((t) => [t.name, t.assignee || 'Unassigned', t.status]),
     );
-  return `<section class="stats"><div><small>WORKFLOWS</small><strong>${state.workflows.length}</strong><span>deployed definitions</span></div><div><small>RUNNING INSTANCES</small><strong>${state.instances.filter((i) => i.status === 'RUNNING').length}</strong><span>active executions</span></div><div><small>OPEN TASKS</small><strong>${state.tasks.filter((t) => t.status !== 'COMPLETED').length}</strong><span>awaiting action</span></div></section>${panel(
+  return `<section class="stats"><div><small>WORKFLOWS</small><strong>${state.workflows.length}</strong><span>deployed definitions</span></div><div><small>RUNNING REQUESTS</small><strong>${state.instances.filter((i) => i.status === 'RUNNING').length}</strong><span>active executions</span></div><div><small>OPEN TASKS</small><strong>${state.tasks.filter((t) => t.status !== 'COMPLETED').length}</strong><span>awaiting action</span></div></section>${panel(
     'Recent activity',
     state.instances.slice(0, 5).map((i) => [i.processKey, i.businessKey || 'No business key', i.status]),
   )}`;
@@ -128,7 +128,7 @@ function workflowDetail() {
 
   const instances = state.instances.filter((instance) => instance.processKey === workflow.key);
   const running = instances.filter((instance) => instance.status === 'RUNNING').length;
-  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>INSTANCES</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Workflow nodes and transitions.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>`;
+  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Workflow nodes and transitions.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>`;
 }
 
 function panel(title, rows) {
@@ -151,10 +151,11 @@ router
     state.workflowId = params.id;
     render();
   })
-  .addRoute('/instances', () => {
-    state.view = 'instances';
+  .addRoute('/requests', () => {
+    state.view = 'requests';
     render();
   })
+  .addRoute('/instances', () => router.navigate('/requests', { replace: true }))
   .addRoute('/tasks', () => {
     state.view = 'tasks';
     render();

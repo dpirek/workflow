@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in `db/users.json` and sessions use HTTP-only cookies. The dashboard exposes workflow definitions, process instances, and human tasks through authenticated JSON APIs.
+Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in `db/users.json` and sessions use HTTP-only cookies. The dashboard exposes workflow definitions, requests, and human tasks through authenticated JSON APIs.
 
 The workflow MCP endpoint remains available through the engine module at:
 
