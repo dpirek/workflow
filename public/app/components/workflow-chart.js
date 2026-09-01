@@ -88,8 +88,10 @@ export class WorkflowChart {
     });
     const ranks = [...columns.keys()].sort((a, b) => a - b);
     const pad = 34;
-    const nodeWidth = Math.max(92, Math.min(138, (width - pad * 2) / Math.max(ranks.length, 1) - 28));
-    const gapX = ranks.length > 1 ? (width - pad * 2 - nodeWidth) / (ranks.length - 1) : 0;
+    const nodeWidth = 138;
+    const columnSpacing = 190;
+    const layoutWidth = Math.max(width, pad * 2 + nodeWidth + Math.max(0, ranks.length - 1) * columnSpacing);
+    const gapX = ranks.length > 1 ? (layoutWidth - pad * 2 - nodeWidth) / (ranks.length - 1) : 0;
     const maxRows = Math.max(1, ...[...columns.values()].map((list) => list.length));
     const height = Math.max(220, maxRows * 112 + 76);
     const positions = new Map();
@@ -98,14 +100,14 @@ export class WorkflowChart {
       const gapY = height / (list.length + 1);
       list.forEach((node, ri) => positions.set(node.key, { x: pad + nodeWidth / 2 + ci * gapX, y: gapY * (ri + 1) }));
     });
-    return { width, height, nodeWidth, positions, edges, nodes };
+    return { width: layoutWidth, height, nodeWidth, positions, edges, nodes };
   }
 
   render() {
     const measuredWidth = Math.floor(this.container.clientWidth || 800);
     this.width = measuredWidth;
     const width = Math.max(480, measuredWidth);
-    const { height, nodeWidth, positions, edges, nodes } = this.layout(width);
+    const { width: layoutWidth, height, nodeWidth, positions, edges, nodes } = this.layout(width);
     const nodeHeight = 68;
     const marker = `arrow-${this.definition.id}`;
     const edgeSvg = edges
@@ -126,7 +128,7 @@ export class WorkflowChart {
         return `<g class="chart-node chart-${node.type.toLowerCase()}"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
-    this.container.innerHTML = `<svg class="workflow-svg" style="display:block;width:100%;min-width:0;height:auto" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges" marker-end="url(#${marker})">${edgeSvg}</g>${nodeSvg}</svg>`;
+    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges" marker-end="url(#${marker})">${edgeSvg}</g>${nodeSvg}</svg>`;
   }
 
   destroy() {
