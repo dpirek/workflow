@@ -22,13 +22,5 @@
   "bugs": {
     "url": "https://github.com/dpirek/workflow/issues"
   },
-  "homepage": "https://github.com/dpirek/workflow#readme",
-  "dependencies": {
-    "@modelcontextprotocol/node": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0",
-    "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@modelcontextprotocol/client": "^2.0.0"
-  }
+  "homepage": "https://github.com/dpirek/workflow#readme"
 }
