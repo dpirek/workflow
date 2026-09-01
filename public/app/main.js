@@ -85,8 +85,7 @@ function render() {
 }
 
 function page() {
-  if (state.view === 'workflows')
-    return workflowList();
+  if (state.view === 'workflows') return workflowList();
   if (state.view === 'workflow-detail') return workflowDetail();
   if (state.view === 'instances')
     return panel(
