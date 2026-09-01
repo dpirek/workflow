@@ -2,14 +2,14 @@
   "name": "workflow",
   "version": "1.0.0",
   "description": "Durable SQLite workflow engine exposed as a Streamable HTTP MCP server",
-  "main": "workflow/index.js",
+  "main": "server.js",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "start": "PORT=3002 node workflow/index.js",
+    "start": "node server.js",
     "test": "node --test",
-    "check": "node --check workflow/index.js && node --check workflow/database/database.js && node --check workflow/database/repository.js && node --check workflow/definitions/validator.js && node --check workflow/expression/evaluator.js && node --check workflow/engine/workflow-engine.js && node --check workflow/mcp/server.js && node --check workflow/mcp/tools.js"
+    "check": "node --check server.js && node --check workflow/database/database.js && node --check workflow/database/repository.js && node --check workflow/definitions/validator.js && node --check workflow/expression/evaluator.js && node --check workflow/engine/workflow-engine.js && node --check workflow/mcp/server.js && node --check workflow/mcp/tools.js"
   },
   "repository": {
     "type": "git",

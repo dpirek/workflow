@@ -11,10 +11,12 @@ npm install
 npm start
 ```
 
-The default endpoints are:
+Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in `db/users.json` and sessions use HTTP-only cookies. The dashboard exposes workflow definitions, process instances, and human tasks through authenticated JSON APIs.
 
-- MCP: `http://127.0.0.1:3000/mcp`
-- Health: `http://127.0.0.1:3000/health`
+The workflow MCP endpoint remains available through the engine module at:
+
+- MCP: `http://127.0.0.1:3000/mcp` (when running `workflow/index.js`)
+- Health: `http://127.0.0.1:8080/health`
 - SQLite: `db/workflow.db`
 
 Configuration:
