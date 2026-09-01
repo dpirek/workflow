@@ -1,4 +1,5 @@
-const TOKEN = /\s*(?:(\d+(?:\.\d+)?)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)|(===|!==|==|!=|>=|<=|&&|\|\||[()!<>+\-*/%]))/y;
+const TOKEN =
+  /\s*(?:(\d+(?:\.\d+)?)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)|(===|!==|==|!=|>=|<=|&&|\|\||[()!<>+\-*/%]))/y;
 
 function tokenize(source) {
   const tokens = [];
@@ -17,16 +18,34 @@ function tokenize(source) {
       tokens.push({ type: 'literal', value: JSON.parse(normalized) });
     } else if (identifier !== undefined) {
       const literals = { true: true, false: false, null: null };
-      tokens.push(Object.hasOwn(literals, identifier)
-        ? { type: 'literal', value: literals[identifier] }
-        : { type: 'identifier', value: identifier });
+      tokens.push(
+        Object.hasOwn(literals, identifier)
+          ? { type: 'literal', value: literals[identifier] }
+          : { type: 'identifier', value: identifier },
+      );
     } else tokens.push({ type: 'operator', value: operator });
   }
   tokens.push({ type: 'eof' });
   return tokens;
 }
 
-const PRECEDENCE = { '||': 1, '&&': 2, '==': 3, '!=': 3, '===': 3, '!==': 3, '>': 4, '>=': 4, '<': 4, '<=': 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6 };
+const PRECEDENCE = {
+  '||': 1,
+  '&&': 2,
+  '==': 3,
+  '!=': 3,
+  '===': 3,
+  '!==': 3,
+  '>': 4,
+  '>=': 4,
+  '<': 4,
+  '<=': 4,
+  '+': 5,
+  '-': 5,
+  '*': 6,
+  '/': 6,
+  '%': 6,
+};
 
 function parse(source) {
   const tokens = tokenize(source);
@@ -81,20 +100,34 @@ function run(node, variables) {
   if (node.operator === '||') return left || run(node.right, variables);
   const right = run(node.right, variables);
   switch (node.operator) {
-    case '==': return left == right; // Intentional workflow-friendly coercion.
-    case '!=': return left != right;
-    case '===': return left === right;
-    case '!==': return left !== right;
-    case '>': return left > right;
-    case '>=': return left >= right;
-    case '<': return left < right;
-    case '<=': return left <= right;
-    case '+': return left + right;
-    case '-': return Number(left) - Number(right);
-    case '*': return Number(left) * Number(right);
-    case '/': return Number(left) / Number(right);
-    case '%': return Number(left) % Number(right);
-    default: throw new Error(`Unsupported operator: ${node.operator}`);
+    case '==':
+      return left == right; // Intentional workflow-friendly coercion.
+    case '!=':
+      return left != right;
+    case '===':
+      return left === right;
+    case '!==':
+      return left !== right;
+    case '>':
+      return left > right;
+    case '>=':
+      return left >= right;
+    case '<':
+      return left < right;
+    case '<=':
+      return left <= right;
+    case '+':
+      return left + right;
+    case '-':
+      return Number(left) - Number(right);
+    case '*':
+      return Number(left) * Number(right);
+    case '/':
+      return Number(left) / Number(right);
+    case '%':
+      return Number(left) % Number(right);
+    default:
+      throw new Error(`Unsupported operator: ${node.operator}`);
   }
 }
 

@@ -17,13 +17,12 @@ class UserContainer extends BaseComponent {
   }
 
   connectedCallback() {
-    this.appendChild(this.createElement('div', {
-      class: 'container-fluid px-3 py-2',
-      children: [
-        new Header({ users: this.users, type: this.type }), 
-        new UserTable({ users: this.users })
-      ]
-    }));
+    this.appendChild(
+      this.createElement('div', {
+        class: 'container-fluid px-3 py-2',
+        children: [new Header({ users: this.users, type: this.type }), new UserTable({ users: this.users })],
+      }),
+    );
   }
 }
 

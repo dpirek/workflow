@@ -5,7 +5,7 @@ const { contentType } = require('./string');
 const STATIC_ROOT = path.join(__dirname, '..', 'public');
 
 function redirect(res, url) {
-  res.writeHead(302, { 'Location': url });
+  res.writeHead(302, { Location: url });
   res.end();
 }
 
@@ -23,10 +23,10 @@ function respondJson(res, data, statusCode = 200) {
 
 function static(res, url, type = 'text/plain') {
   res.statusCode = 200;
-  res.writeHead(200, {'Content-Type': contentType(url)});
+  res.writeHead(200, { 'Content-Type': contentType(url) });
   try {
     fs.accessSync(__dirname + url, fs.constants.R_OK);
-  } catch(err) {
+  } catch (err) {
     res.statusCode = 404;
     return res.end('404 Not Found');
   }
@@ -36,14 +36,14 @@ function static(res, url, type = 'text/plain') {
 function serverStatic(req, res) {
   try {
     let { pathname } = url.parse(req.url);
-    res.writeHead(200, {'Content-Type': contentType(pathname)});
+    res.writeHead(200, { 'Content-Type': contentType(pathname) });
 
-    if(pathname === '/') pathname = '/index.html';
-    if(pathname === '/favicon.ico') return res.end();
+    if (pathname === '/') pathname = '/index.html';
+    if (pathname === '/favicon.ico') return res.end();
 
     const fileContent = fs.readFileSync(STATIC_ROOT + pathname);
-    
-    if(fileContent === null) return res.end('not found');
+
+    if (fileContent === null) return res.end('not found');
     return res.end(fileContent);
   } catch (exception) {
     console.error('exception found..', exception);
@@ -51,15 +51,29 @@ function serverStatic(req, res) {
 }
 
 function serverIndex(req) {
-  const file = fs.readFileSync(STATIC_ROOT + '/index.html');  
+  const file = fs.readFileSync(STATIC_ROOT + '/index.html');
   return file.toString();
 }
 
 function isStaticRequest(req) {
   const { pathname } = url.parse(req.url);
   if (pathname === '/' || pathname === '/favicon.ico') return true;
-  const staticFiles = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.woff', '.map', '.wasm', '.json', '.svg', '.ico', '.html'];
-  return staticFiles.some(ext => pathname.endsWith(ext));
+  const staticFiles = [
+    '.js',
+    '.css',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.woff',
+    '.map',
+    '.wasm',
+    '.json',
+    '.svg',
+    '.ico',
+    '.html',
+  ];
+  return staticFiles.some((ext) => pathname.endsWith(ext));
 }
 
 function notFound(res) {
@@ -95,23 +109,25 @@ function notAuthorizedHtml(res) {
 async function parseBody(req) {
   return new Promise((resolve, reject) => {
     const requestBody = [];
-    req.on('data', (chunk) => {
-      requestBody.push(chunk);
-    }).on('end', () => {
-      const body = Buffer.concat(requestBody).toString();
-      if (req.headers['content-type'] === 'application/json') {
-        try {
-          if (!body){
-            return resolve({});
-          } else {
-            return resolve(JSON.parse(body));
+    req
+      .on('data', (chunk) => {
+        requestBody.push(chunk);
+      })
+      .on('end', () => {
+        const body = Buffer.concat(requestBody).toString();
+        if (req.headers['content-type'] === 'application/json') {
+          try {
+            if (!body) {
+              return resolve({});
+            } else {
+              return resolve(JSON.parse(body));
+            }
+          } catch (e) {
+            return reject(new Error('Invalid JSON'));
           }
-        } catch (e) {
-          return reject(new Error('Invalid JSON'));
         }
-      }
-      resolve(body);
-    });
+        resolve(body);
+      });
   });
 }
 
@@ -128,5 +144,5 @@ module.exports = {
   serverIndex,
   respondJson,
   respondHtml,
-  parseBody
+  parseBody,
 };

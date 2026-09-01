@@ -42,7 +42,7 @@ import ModalComponent from '../modal-component.js';
 class UserDetail extends BaseComponent {
   userDetails = {};
   conversations = [];
-  
+
   constructor(user) {
     super();
     this.user = user;
@@ -62,13 +62,13 @@ class UserDetail extends BaseComponent {
     fetch('/api/user/update-valid-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        username: this.user.username, 
-        status: validImage 
+      body: JSON.stringify({
+        username: this.user.username,
+        status: validImage,
       }),
     })
-      .then(response => response.json())
-      .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
           this.showAlert('User updated successfully');
           this.close();
@@ -76,7 +76,7 @@ class UserDetail extends BaseComponent {
           this.showAlert('Error updating user: ' + data.error);
         }
       })
-      .catch(error => console.error('Error updating user:', error));
+      .catch((error) => console.error('Error updating user:', error));
   }
 
   showAlert(message) {
@@ -86,7 +86,7 @@ class UserDetail extends BaseComponent {
   imageStatusSelector(currentStatus) {
     const statuses = ['yes', 'no', 'unknown'];
 
-    const options = statuses.map(status => {
+    const options = statuses.map((status) => {
       const props = { value: status, innerText: status.charAt(0).toUpperCase() + status.slice(1) };
 
       if (status === currentStatus) {
@@ -100,19 +100,19 @@ class UserDetail extends BaseComponent {
       id: 'validImage',
       class: 'form-select',
       style: { maxWidth: '100px' },
-      children: [...options]
+      children: [...options],
     });
 
     return this.createElement('div', {
       //class: 'mb-3 mt-3',
       children: [
-        // this.createElement('label', { 
-        //   for: 'validImage', 
-        //   class: 'form-label', 
-        //   innerHTML: '<strong>Valid Image Status:</strong>' 
+        // this.createElement('label', {
+        //   for: 'validImage',
+        //   class: 'form-label',
+        //   innerHTML: '<strong>Valid Image Status:</strong>'
         // }),
-        this.selectElement
-      ]
+        this.selectElement,
+      ],
     });
   }
 
@@ -162,145 +162,140 @@ class UserDetail extends BaseComponent {
   }
 
   render() {
-    const detailContainer = this.createElement('div', { 
-      //innerText: 'Loading...', 
-      class: 'mt-3' 
+    const detailContainer = this.createElement('div', {
+      //innerText: 'Loading...',
+      class: 'mt-3',
     });
 
     const conversationContainer = this.createElement('div', {});
 
-    this.appendChild(new ModalComponent({
-      title: `User Detail: ${this.user.username}`,
-      body: this.createElement('div', {
-        //class: 'modal-body',
-        children: [
-          this.createElement('div', { 
-            class: 'row mb-3', 
-            children: [
-              this.createElement('div', { 
-                class: 'col',
-                children: [
-                  this.createElement('img', {
-                    src: `/img/p/user-${this.user.username}.jpg`,
-                    alt: `${this.user.username}'s profile image`,
-                    style: { 
-                      //maxWidth: '300px', 
-                      //maxHeight: '300px', 
-                      //objectFit: 'cover', 
-                      //borderRadius: '50%'
-                    }
-                  }),
-                  this.createElement('div', {
-                    class: 'mt-3 row',
-                    children: [
-                      this.createElement('div', {
-                        class: 'col',
-                        children: [
-                          this.imageStatusSelector(this.user.valid_image)
-                        ]
-                      }),
-                      this.createElement('div', {
-                        // align right
-                        class: 'col text-end',
-                        children: [
-                          this.createElement('button', {
-                            class: 'btn btn-primary',
-                            innerText: 'Save',
-                            addEventListener: {
-                              name: 'click',
-                              handler: () => {
-                                const selectedStatus = this.getSelectedValue();
-                                this.save(selectedStatus);
-                              }
-                            }
-                          }),
-                          this.createElement('button', {
-                            class: 'btn btn-danger',
-                            style: { marginLeft: '10px' },
-                            innerText: 'delete',
-                            addEventListener: { 
-                              name: 'click', 
-                              handler: () => {
-                                if (confirm(`Are you sure you want to delete user ${this.user.username}?`)) {
-                                  console.log('Deleting user', this.user.username);
-                                  fetch('/api/user-kill', {
-                                    method: 'DELETE',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ username: this.user.username })
-                                  })
-                                  .then(response => response.json())
-                                  .then(data => {
-                                    if (data.success) {
-                                      console.log(`${this.user.username} deleted successfully`);
-                                    } else {
-                                      console.error('Error deleting user:', data.error);
-                                    }
-                                  })
-                                  .catch(error => {
-                                    console.error('Error updating user:', error);
-                                  });
-                                }
-                              }
-                            }
-                          }),
-                        ]
-                      }),
-                       //this.imageStatusSelector(this.user.valid_image),
-                      
-                      
-                      
-                    ]
-                  })
-                ]
-              }),
-              this.createElement('div', {
-                class: 'col',
-                children: [
-                  detailContainer
-                ]
-              }),
-            ]
-          }),
-          conversationContainer
-        ]
+    this.appendChild(
+      new ModalComponent({
+        title: `User Detail: ${this.user.username}`,
+        body: this.createElement('div', {
+          //class: 'modal-body',
+          children: [
+            this.createElement('div', {
+              class: 'row mb-3',
+              children: [
+                this.createElement('div', {
+                  class: 'col',
+                  children: [
+                    this.createElement('img', {
+                      src: `/img/p/user-${this.user.username}.jpg`,
+                      alt: `${this.user.username}'s profile image`,
+                      style: {
+                        //maxWidth: '300px',
+                        //maxHeight: '300px',
+                        //objectFit: 'cover',
+                        //borderRadius: '50%'
+                      },
+                    }),
+                    this.createElement('div', {
+                      class: 'mt-3 row',
+                      children: [
+                        this.createElement('div', {
+                          class: 'col',
+                          children: [this.imageStatusSelector(this.user.valid_image)],
+                        }),
+                        this.createElement('div', {
+                          // align right
+                          class: 'col text-end',
+                          children: [
+                            this.createElement('button', {
+                              class: 'btn btn-primary',
+                              innerText: 'Save',
+                              addEventListener: {
+                                name: 'click',
+                                handler: () => {
+                                  const selectedStatus = this.getSelectedValue();
+                                  this.save(selectedStatus);
+                                },
+                              },
+                            }),
+                            this.createElement('button', {
+                              class: 'btn btn-danger',
+                              style: { marginLeft: '10px' },
+                              innerText: 'delete',
+                              addEventListener: {
+                                name: 'click',
+                                handler: () => {
+                                  if (confirm(`Are you sure you want to delete user ${this.user.username}?`)) {
+                                    console.log('Deleting user', this.user.username);
+                                    fetch('/api/user-kill', {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ username: this.user.username }),
+                                    })
+                                      .then((response) => response.json())
+                                      .then((data) => {
+                                        if (data.success) {
+                                          console.log(`${this.user.username} deleted successfully`);
+                                        } else {
+                                          console.error('Error deleting user:', data.error);
+                                        }
+                                      })
+                                      .catch((error) => {
+                                        console.error('Error updating user:', error);
+                                      });
+                                  }
+                                },
+                              },
+                            }),
+                          ],
+                        }),
+                        //this.imageStatusSelector(this.user.valid_image),
+                      ],
+                    }),
+                  ],
+                }),
+                this.createElement('div', {
+                  class: 'col',
+                  children: [detailContainer],
+                }),
+              ],
+            }),
+            conversationContainer,
+          ],
+        }),
+        footer: this.createElement('div', {
+          class: 'd-flex justify-content-end',
+          children: [],
+        }),
       }),
-      footer: this.createElement('div', {
-        class: 'd-flex justify-content-end',
-        children: [
-          
-        ]
-      })
-    }));
+    );
 
     document.body.appendChild(this);
 
     // fetch user details
     fetch(`/api/users/detail/${this.user.username}`)
-      .then(response => response.json())
-      .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.user) {
           this.userDetails = data.user;
-          detailContainer.appendChild(this.createElement('div', {
-            innerHTML: this.userInfoDetails()
-          }));
+          detailContainer.appendChild(
+            this.createElement('div', {
+              innerHTML: this.userInfoDetails(),
+            }),
+          );
           //this.render(); // Re-render with updated user data
         }
       })
-      .catch(error => console.error('Error fetching user detail:', error));
-    
+      .catch((error) => console.error('Error fetching user detail:', error));
+
     // fetch conversations for this user
     const username = this.user.username;
-      fetch(`/api/messages/conversations/${username}`)
-        .then(response => response.json())
-        .then(res => {
-          this.conversations = res.conversations || [];
-          if (this.conversations.length > 0) {
-            const container = new ConversationContainer({ conversations: this.conversations, user: username });
-            conversationContainer.appendChild(this.createElement('h3', { innerText: 'Conversations' }));
-            conversationContainer.appendChild(container);
-          }
-        })
-        .catch(error => console.error('Error fetching conversations:', error));
+    fetch(`/api/messages/conversations/${username}`)
+      .then((response) => response.json())
+      .then((res) => {
+        this.conversations = res.conversations || [];
+        if (this.conversations.length > 0) {
+          const container = new ConversationContainer({ conversations: this.conversations, user: username });
+          conversationContainer.appendChild(this.createElement('h3', { innerText: 'Conversations' }));
+          conversationContainer.appendChild(container);
+        }
+      })
+      .catch((error) => console.error('Error fetching conversations:', error));
   }
 }
 

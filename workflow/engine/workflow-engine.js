@@ -11,7 +11,9 @@ export class WorkflowEngine {
     this.repo = new WorkflowRepository(db);
   }
 
-  close() { this.db.close(); }
+  close() {
+    this.db.close();
+  }
 
   deploy(definition) {
     validateDefinition(definition);
@@ -38,34 +40,57 @@ export class WorkflowEngine {
       status: row.status,
       createdAt: row.created_at,
       nodes: graph.nodes.map((node) => ({
-        id: node.id, key: node.node_key, name: node.name, type: node.node_type, config: parseJson(node.config_json, {})
+        id: node.id,
+        key: node.node_key,
+        name: node.name,
+        type: node.node_type,
+        config: parseJson(node.config_json, {}),
       })),
       edges: graph.edges.map((edge) => ({
-        id: edge.id, key: edge.edge_key, from: edge.source_key, to: edge.target_key,
-        condition: edge.condition_expression, priority: edge.priority
-      }))
+        id: edge.id,
+        key: edge.edge_key,
+        from: edge.source_key,
+        to: edge.target_key,
+        condition: edge.condition_expression,
+        priority: edge.priority,
+      })),
     };
   }
 
   listDefinitions(key) {
     return this.repo.listDefinitions(key).map((row) => ({
-      id: row.id, key: row.process_key, name: row.name, version: row.version,
-      description: row.description, status: row.status, createdAt: row.created_at
+      id: row.id,
+      key: row.process_key,
+      name: row.name,
+      version: row.version,
+      description: row.description,
+      status: row.status,
+      createdAt: row.created_at,
     }));
   }
 
   startProcess(processKey, variables = {}, options = {}) {
     return withTransaction(this.db, () => {
       const definition = this.repo.findDefinition(processKey, options.version);
-      if (!definition) throw new Error(`Active process definition not found: ${processKey}${options.version ? ` v${options.version}` : ''}`);
+      if (!definition)
+        throw new Error(
+          `Active process definition not found: ${processKey}${options.version ? ` v${options.version}` : ''}`,
+        );
       const start = this.repo.startNode(definition.id);
       if (!start) throw new Error(`Definition ${definition.id} has no START node`);
       const instanceId = this.repo.insertInstance(definition.id, options.businessKey, options.parentInstanceId ?? null);
       this.repo.upsertVariables(instanceId, variables);
       const tokenId = this.repo.insertToken(instanceId, start.id);
-      this.repo.addHistory(instanceId, 'PROCESS_STARTED', { tokenId, nodeId: start.id }, {
-        processKey, version: definition.version, businessKey: options.businessKey ?? null
-      });
+      this.repo.addHistory(
+        instanceId,
+        'PROCESS_STARTED',
+        { tokenId, nodeId: start.id },
+        {
+          processKey,
+          version: definition.version,
+          businessKey: options.businessKey ?? null,
+        },
+      );
       this.repo.addHistory(instanceId, 'TOKEN_CREATED', { tokenId, nodeId: start.id });
       this.executeTokens([tokenId]);
       return this.getProcessInstance(instanceId);
@@ -91,15 +116,21 @@ export class WorkflowEngine {
       tokens: this.repo.tokensForInstance(id).map(mapToken),
       tasks: this.repo.listTasks({ instanceId: id, limit: 500 }).map(mapTask),
       jobs: this.repo.jobsForInstance(id).map(mapJob),
-      incidents: this.repo.listIncidents(undefined, id, 500).map(mapIncident)
+      incidents: this.repo.listIncidents(undefined, id, 500).map(mapIncident),
     };
   }
 
   listProcessInstances(query = {}) {
     return this.repo.listInstances(query).map((row) => ({
-      id: row.id, processDefinitionId: row.process_definition_id, processKey: row.process_key,
-      processName: row.process_name, version: row.version, businessKey: row.business_key,
-      status: row.status, startedAt: row.started_at, endedAt: row.ended_at
+      id: row.id,
+      processDefinitionId: row.process_definition_id,
+      processKey: row.process_key,
+      processName: row.process_name,
+      version: row.version,
+      businessKey: row.business_key,
+      status: row.status,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
     }));
   }
 
@@ -126,7 +157,9 @@ export class WorkflowEngine {
     });
   }
 
-  listTasks(query = {}) { return this.repo.listTasks(query).map(mapTask); }
+  listTasks(query = {}) {
+    return this.repo.listTasks(query).map(mapTask);
+  }
 
   claimTask(taskId, assignee) {
     return withTransaction(this.db, () => {
@@ -136,7 +169,12 @@ export class WorkflowEngine {
       if (task.status === 'CLAIMED' && task.assignee === assignee) return mapTask(task);
       if (task.status !== 'CREATED') throw new Error(`Task ${taskId} cannot be claimed from status ${task.status}`);
       if (!this.repo.claimTask(taskId, assignee)) throw new Error(`Task ${taskId} was claimed concurrently`);
-      this.repo.addHistory(task.process_instance_id, 'TASK_CLAIMED', { taskId, tokenId: task.token_id, nodeId: task.node_id }, { assignee });
+      this.repo.addHistory(
+        task.process_instance_id,
+        'TASK_CLAIMED',
+        { taskId, tokenId: task.token_id, nodeId: task.node_id },
+        { assignee },
+      );
       return mapTask(this.repo.task(taskId));
     });
   }
@@ -145,12 +183,19 @@ export class WorkflowEngine {
     return withTransaction(this.db, () => {
       const task = this.repo.task(taskId);
       if (!task) throw new Error(`Task ${taskId} not found`);
-      if (task.status === 'COMPLETED') return { alreadyCompleted: true, instance: this.getProcessInstance(task.process_instance_id) };
+      if (task.status === 'COMPLETED')
+        return { alreadyCompleted: true, instance: this.getProcessInstance(task.process_instance_id) };
       this.requireRunningInstance(task.process_instance_id);
-      if (!this.repo.completeTask(taskId)) throw new Error(`Task ${taskId} cannot be completed from status ${task.status}`);
+      if (!this.repo.completeTask(taskId))
+        throw new Error(`Task ${taskId} cannot be completed from status ${task.status}`);
       this.applyVariables(task.process_instance_id, variables);
       this.repo.setTokenState(task.token_id, 'ACTIVE');
-      this.repo.addHistory(task.process_instance_id, 'TASK_COMPLETED', { taskId, tokenId: task.token_id, nodeId: task.node_id }, { variables });
+      this.repo.addHistory(
+        task.process_instance_id,
+        'TASK_COMPLETED',
+        { taskId, tokenId: task.token_id, nodeId: task.node_id },
+        { variables },
+      );
       this.completeCurrentNodeAndFollow(task.token_id, [task.token_id]);
       return { alreadyCompleted: false, instance: this.getProcessInstance(task.process_instance_id) };
     });
@@ -167,7 +212,12 @@ export class WorkflowEngine {
       for (const job of candidates) {
         if (!this.repo.claimJob(job.id, workerId, lockedUntil)) continue;
         const updated = this.repo.job(job.id);
-        this.repo.addHistory(job.process_instance_id, 'JOB_STARTED', { jobId: job.id, tokenId: job.token_id, nodeId: job.node_id }, { workerId, lockedUntil });
+        this.repo.addHistory(
+          job.process_instance_id,
+          'JOB_STARTED',
+          { jobId: job.id, tokenId: job.token_id, nodeId: job.node_id },
+          { workerId, lockedUntil },
+        );
         claimed.push({ ...mapJob(updated), variables: this.repo.variables(job.process_instance_id) });
       }
       return claimed;
@@ -178,14 +228,20 @@ export class WorkflowEngine {
     return withTransaction(this.db, () => {
       const job = this.repo.job(jobId);
       if (!job) throw new Error(`Job ${jobId} not found`);
-      if (job.status === 'COMPLETED') return { alreadyCompleted: true, instance: this.getProcessInstance(job.process_instance_id) };
+      if (job.status === 'COMPLETED')
+        return { alreadyCompleted: true, instance: this.getProcessInstance(job.process_instance_id) };
       this.requireRunningInstance(job.process_instance_id);
       if (job.status !== 'RUNNING') throw new Error(`Job ${jobId} cannot be completed from status ${job.status}`);
       if (job.locked_by !== workerId) throw new Error(`Job ${jobId} is locked by ${job.locked_by || 'another worker'}`);
       this.repo.completeJob(jobId);
       this.applyVariables(job.process_instance_id, variables);
       this.repo.setTokenState(job.token_id, 'ACTIVE');
-      this.repo.addHistory(job.process_instance_id, 'JOB_COMPLETED', { jobId, tokenId: job.token_id, nodeId: job.node_id }, { workerId, variables });
+      this.repo.addHistory(
+        job.process_instance_id,
+        'JOB_COMPLETED',
+        { jobId, tokenId: job.token_id, nodeId: job.node_id },
+        { workerId, variables },
+      );
       this.completeCurrentNodeAndFollow(job.token_id, [job.token_id]);
       return { alreadyCompleted: false, instance: this.getProcessInstance(job.process_instance_id) };
     });
@@ -198,15 +254,32 @@ export class WorkflowEngine {
       if (job.status !== 'RUNNING') throw new Error(`Job ${jobId} cannot fail from status ${job.status}`);
       if (job.locked_by !== workerId) throw new Error(`Job ${jobId} is locked by ${job.locked_by || 'another worker'}`);
       const retries = Math.max(Number(job.retries) - 1, 0);
-      this.repo.addHistory(job.process_instance_id, 'JOB_FAILED', { jobId, tokenId: job.token_id, nodeId: job.node_id }, { workerId, error: errorMessage, retries });
+      this.repo.addHistory(
+        job.process_instance_id,
+        'JOB_FAILED',
+        { jobId, tokenId: job.token_id, nodeId: job.node_id },
+        { workerId, error: errorMessage, retries },
+      );
       if (retries > 0) {
         const attempt = Math.max(1, 4 - retries);
         const delay = retryDelayMs ?? [5_000, 30_000, 300_000][Math.min(attempt - 1, 2)];
         this.repo.retryJob(jobId, retries, sqlTime(Date.now() + delay), errorMessage);
       } else {
         this.repo.deadJob(jobId, errorMessage);
-        const incidentId = this.createIncident(job.process_instance_id, job.id, job.node_id, 'JOB_RETRIES_EXHAUSTED', errorMessage, { workerId });
-        this.repo.addHistory(job.process_instance_id, 'INCIDENT_CREATED', { jobId, nodeId: job.node_id }, { incidentId, error: errorMessage });
+        const incidentId = this.createIncident(
+          job.process_instance_id,
+          job.id,
+          job.node_id,
+          'JOB_RETRIES_EXHAUSTED',
+          errorMessage,
+          { workerId },
+        );
+        this.repo.addHistory(
+          job.process_instance_id,
+          'INCIDENT_CREATED',
+          { jobId, nodeId: job.node_id },
+          { incidentId, error: errorMessage },
+        );
       }
       return mapJob(this.repo.job(jobId));
     });
@@ -216,9 +289,15 @@ export class WorkflowEngine {
     return withTransaction(this.db, () => {
       const job = this.repo.job(jobId);
       if (!job) throw new Error(`Job ${jobId} not found`);
-      if (!['DEAD', 'FAILED'].includes(job.status)) throw new Error(`Job ${jobId} cannot be retried from status ${job.status}`);
+      if (!['DEAD', 'FAILED'].includes(job.status))
+        throw new Error(`Job ${jobId} cannot be retried from status ${job.status}`);
       this.repo.retryJob(jobId, Math.max(retries, 1), sqlTime(Date.now() + Math.max(delayMs, 0)));
-      this.repo.addHistory(job.process_instance_id, 'JOB_RETRIED', { jobId, tokenId: job.token_id, nodeId: job.node_id }, { retries, delayMs });
+      this.repo.addHistory(
+        job.process_instance_id,
+        'JOB_RETRIED',
+        { jobId, tokenId: job.token_id, nodeId: job.node_id },
+        { retries, delayMs },
+      );
       return mapJob(this.repo.job(jobId));
     });
   }
@@ -229,7 +308,11 @@ export class WorkflowEngine {
       for (const job of jobs) {
         this.repo.completeJob(job.id);
         this.repo.setTokenState(job.token_id, 'ACTIVE');
-        this.repo.addHistory(job.process_instance_id, 'TIMER_FIRED', { jobId: job.id, tokenId: job.token_id, nodeId: job.node_id });
+        this.repo.addHistory(job.process_instance_id, 'TIMER_FIRED', {
+          jobId: job.id,
+          tokenId: job.token_id,
+          nodeId: job.node_id,
+        });
         this.completeCurrentNodeAndFollow(job.token_id, [job.token_id]);
       }
       return { fired: jobs.length, jobIds: jobs.map((job) => job.id) };
@@ -240,19 +323,30 @@ export class WorkflowEngine {
     return withTransaction(this.db, () => {
       const match = this.repo.messageJobs().find((job) => {
         const payload = parseJson(job.payload_json, {});
-        return payload.messageName === messageName && String(payload.correlationKey ?? job.business_key ?? '') === String(correlationKey);
+        return (
+          payload.messageName === messageName &&
+          String(payload.correlationKey ?? job.business_key ?? '') === String(correlationKey)
+        );
       });
-      if (!match) throw new Error(`No waiting subscription for message ${messageName} and correlation ${correlationKey}`);
+      if (!match)
+        throw new Error(`No waiting subscription for message ${messageName} and correlation ${correlationKey}`);
       this.repo.completeJob(match.id);
       this.applyVariables(match.process_instance_id, variables);
       this.repo.setTokenState(match.token_id, 'ACTIVE');
-      this.repo.addHistory(match.process_instance_id, 'MESSAGE_RECEIVED', { jobId: match.id, tokenId: match.token_id, nodeId: match.node_id }, { messageName, correlationKey, variables });
+      this.repo.addHistory(
+        match.process_instance_id,
+        'MESSAGE_RECEIVED',
+        { jobId: match.id, tokenId: match.token_id, nodeId: match.node_id },
+        { messageName, correlationKey, variables },
+      );
       this.completeCurrentNodeAndFollow(match.token_id, [match.token_id]);
       return this.getProcessInstance(match.process_instance_id);
     });
   }
 
-  listIncidents(query = {}) { return this.repo.listIncidents(query.status, query.instanceId, query.limit).map(mapIncident); }
+  listIncidents(query = {}) {
+    return this.repo.listIncidents(query.status, query.instanceId, query.limit).map(mapIncident);
+  }
 
   resolveIncident(incidentId, options = {}) {
     return withTransaction(this.db, () => {
@@ -264,7 +358,12 @@ export class WorkflowEngine {
         if (job?.status === 'DEAD') this.repo.retryJob(job.id, Math.max(options.retries ?? 3, 1), sqlTime());
       }
       this.repo.resolveIncident(incidentId);
-      this.repo.addHistory(incident.process_instance_id, 'INCIDENT_RESOLVED', { jobId: incident.job_id, nodeId: incident.node_id }, { incidentId, retryJob: Boolean(options.retryJob) });
+      this.repo.addHistory(
+        incident.process_instance_id,
+        'INCIDENT_RESOLVED',
+        { jobId: incident.job_id, nodeId: incident.node_id },
+        { incidentId, retryJob: Boolean(options.retryJob) },
+      );
       return mapIncident(this.repo.incident(incidentId));
     });
   }
@@ -272,9 +371,15 @@ export class WorkflowEngine {
   getHistory(instanceId, query = {}) {
     if (!this.repo.instance(instanceId)) throw new Error(`Process instance ${instanceId} not found`);
     return this.repo.history(instanceId, query.type, query.limit).map((row) => ({
-      id: row.id, processInstanceId: row.process_instance_id, nodeId: row.node_id, tokenId: row.token_id,
-      taskId: row.task_id, jobId: row.job_id, type: row.event_type,
-      data: parseJson(row.event_data_json, {}), createdAt: row.created_at
+      id: row.id,
+      processInstanceId: row.process_instance_id,
+      nodeId: row.node_id,
+      tokenId: row.token_id,
+      taskId: row.task_id,
+      jobId: row.job_id,
+      type: row.event_type,
+      data: parseJson(row.event_data_json, {}),
+      createdAt: row.created_at,
     }));
   }
 
@@ -282,16 +387,30 @@ export class WorkflowEngine {
     const queue = [...initialTokenIds];
     let transitions = 0;
     while (queue.length) {
-      if (++transitions > MAX_AUTOMATIC_TRANSITIONS) throw new Error('Automatic transition limit exceeded; the workflow likely contains an infinite loop');
+      if (++transitions > MAX_AUTOMATIC_TRANSITIONS)
+        throw new Error('Automatic transition limit exceeded; the workflow likely contains an infinite loop');
       const tokenId = queue.shift();
       const token = this.repo.token(tokenId);
       if (!token || token.state !== 'ACTIVE') continue;
       const instance = this.repo.instance(token.process_instance_id);
       if (!instance || instance.status !== 'RUNNING') continue;
       const node = this.repo.node(token.node_id);
-      if (!node) { this.haltWithIncident(token, null, 'MISSING_NODE', `Token ${token.id} references missing node ${token.node_id}`); continue; }
+      if (!node) {
+        this.haltWithIncident(
+          token,
+          null,
+          'MISSING_NODE',
+          `Token ${token.id} references missing node ${token.node_id}`,
+        );
+        continue;
+      }
       const config = parseJson(node.config_json, {});
-      this.repo.addHistory(token.process_instance_id, 'NODE_ENTERED', { tokenId: token.id, nodeId: node.id }, { nodeKey: node.node_key, nodeType: node.node_type });
+      this.repo.addHistory(
+        token.process_instance_id,
+        'NODE_ENTERED',
+        { tokenId: token.id, nodeId: node.id },
+        { nodeKey: node.node_key, nodeType: node.node_type },
+      );
 
       switch (node.node_type) {
         case 'START':
@@ -307,14 +426,29 @@ export class WorkflowEngine {
           const existing = this.repo.activeTaskFor(token.id, node.id);
           const taskId = existing?.id ?? this.repo.insertTask(token, node, config);
           this.repo.setTokenState(token.id, 'WAITING');
-          if (!existing) this.repo.addHistory(token.process_instance_id, 'TASK_CREATED', { taskId, tokenId: token.id, nodeId: node.id }, { taskKey: node.node_key, name: node.name });
+          if (!existing)
+            this.repo.addHistory(
+              token.process_instance_id,
+              'TASK_CREATED',
+              { taskId, tokenId: token.id, nodeId: node.id },
+              { taskKey: node.node_key, name: node.name },
+            );
           break;
         }
         case 'SERVICE_TASK':
         case 'SCRIPT_TASK':
-          this.createWaitingJob(token, node, 'SERVICE_TASK', {
-            ...config, workerType: config.workerType || `script.${node.node_key}`, nodeKey: node.node_key
-          }, config.retries ?? 3, sqlTime());
+          this.createWaitingJob(
+            token,
+            node,
+            'SERVICE_TASK',
+            {
+              ...config,
+              workerType: config.workerType || `script.${node.node_key}`,
+              nodeKey: node.node_key,
+            },
+            config.retries ?? 3,
+            sqlTime(),
+          );
           break;
         case 'TIMER': {
           const dueAt = timerDueAt(config);
@@ -327,9 +461,19 @@ export class WorkflowEngine {
           const correlationKey = config.correlationKey
             ? (variables[config.correlationKey] ?? config.correlationKey)
             : instanceRow.business_key;
-          this.createWaitingJob(token, node, 'MESSAGE', {
-            ...config, messageName: config.messageName || node.node_key, correlationKey, nodeKey: node.node_key
-          }, 1, null);
+          this.createWaitingJob(
+            token,
+            node,
+            'MESSAGE',
+            {
+              ...config,
+              messageName: config.messageName || node.node_key,
+              correlationKey,
+              nodeKey: node.node_key,
+            },
+            1,
+            null,
+          );
           break;
         }
         case 'EXCLUSIVE_GATEWAY':
@@ -350,7 +494,12 @@ export class WorkflowEngine {
     this.completeNode(token, node);
     const edges = this.repo.outgoingEdges(node.id);
     if (edges.length !== 1) {
-      this.haltWithIncident(token, node, 'INVALID_OUTGOING_EDGE_COUNT', `${node.node_type} ${node.node_key} requires exactly one outgoing edge`);
+      this.haltWithIncident(
+        token,
+        node,
+        'INVALID_OUTGOING_EDGE_COUNT',
+        `${node.node_type} ${node.node_key} requires exactly one outgoing edge`,
+      );
       return;
     }
     this.repo.moveToken(token.id, edges[0].target_node_id);
@@ -360,7 +509,12 @@ export class WorkflowEngine {
   followSingle(token, node, queue) {
     const edges = this.repo.outgoingEdges(node.id);
     if (edges.length !== 1) {
-      this.haltWithIncident(token, node, 'INVALID_OUTGOING_EDGE_COUNT', `${node.node_type} ${node.node_key} requires exactly one outgoing edge`);
+      this.haltWithIncident(
+        token,
+        node,
+        'INVALID_OUTGOING_EDGE_COUNT',
+        `${node.node_type} ${node.node_key} requires exactly one outgoing edge`,
+      );
       return;
     }
     this.completeNode(token, node);
@@ -375,8 +529,14 @@ export class WorkflowEngine {
     let defaultEdge;
     try {
       for (const edge of edges) {
-        if (!edge.condition_expression) { defaultEdge ??= edge; continue; }
-        if (evaluateExpression(edge.condition_expression, variables)) { selected = edge; break; }
+        if (!edge.condition_expression) {
+          defaultEdge ??= edge;
+          continue;
+        }
+        if (evaluateExpression(edge.condition_expression, variables)) {
+          selected = edge;
+          break;
+        }
       }
     } catch (error) {
       this.haltWithIncident(token, node, 'EXPRESSION_ERROR', error.message);
@@ -404,13 +564,23 @@ export class WorkflowEngine {
       continuation = group[0];
       for (const consumed of group.slice(1)) {
         this.repo.setTokenState(consumed.id, 'COMPLETED');
-        this.repo.addHistory(consumed.process_instance_id, 'TOKEN_COMPLETED', { tokenId: consumed.id, nodeId: node.id }, { reason: 'parallel_join' });
+        this.repo.addHistory(
+          consumed.process_instance_id,
+          'TOKEN_COMPLETED',
+          { tokenId: consumed.id, nodeId: node.id },
+          { reason: 'parallel_join' },
+        );
       }
       this.repo.setTokenState(continuation.id, 'ACTIVE');
     }
 
     if (outgoing.length === 0) {
-      this.haltWithIncident(continuation, node, 'NO_OUTGOING_EDGE', `Parallel gateway ${node.node_key} has no outgoing edge`);
+      this.haltWithIncident(
+        continuation,
+        node,
+        'NO_OUTGOING_EDGE',
+        `Parallel gateway ${node.node_key} has no outgoing edge`,
+      );
       return;
     }
     this.completeNode(continuation, node, { joined: incoming > 1, branches: outgoing.length });
@@ -421,10 +591,20 @@ export class WorkflowEngine {
     }
 
     this.repo.setTokenState(continuation.id, 'COMPLETED');
-    this.repo.addHistory(continuation.process_instance_id, 'TOKEN_COMPLETED', { tokenId: continuation.id, nodeId: node.id }, { reason: 'parallel_split' });
+    this.repo.addHistory(
+      continuation.process_instance_id,
+      'TOKEN_COMPLETED',
+      { tokenId: continuation.id, nodeId: node.id },
+      { reason: 'parallel_split' },
+    );
     for (const edge of outgoing) {
       const childId = this.repo.insertToken(continuation.process_instance_id, edge.target_node_id, continuation.id);
-      this.repo.addHistory(continuation.process_instance_id, 'TOKEN_CREATED', { tokenId: childId, nodeId: edge.target_node_id }, { parentTokenId: continuation.id });
+      this.repo.addHistory(
+        continuation.process_instance_id,
+        'TOKEN_CREATED',
+        { tokenId: childId, nodeId: edge.target_node_id },
+        { parentTokenId: continuation.id },
+      );
       queue.push(childId);
     }
   }
@@ -433,11 +613,22 @@ export class WorkflowEngine {
     const existing = this.repo.activeJobFor(token.id, node.id);
     const jobId = existing?.id ?? this.repo.insertJob(token, node, type, payload, Math.max(retries, 1), dueAt);
     this.repo.setTokenState(token.id, 'WAITING');
-    if (!existing) this.repo.addHistory(token.process_instance_id, 'JOB_CREATED', { jobId, tokenId: token.id, nodeId: node.id }, { jobType: type, dueAt, workerType: payload.workerType });
+    if (!existing)
+      this.repo.addHistory(
+        token.process_instance_id,
+        'JOB_CREATED',
+        { jobId, tokenId: token.id, nodeId: node.id },
+        { jobType: type, dueAt, workerType: payload.workerType },
+      );
   }
 
   completeNode(token, node, data = {}) {
-    this.repo.addHistory(token.process_instance_id, 'NODE_COMPLETED', { tokenId: token.id, nodeId: node.id }, { nodeKey: node.node_key, nodeType: node.node_type, ...data });
+    this.repo.addHistory(
+      token.process_instance_id,
+      'NODE_COMPLETED',
+      { tokenId: token.id, nodeId: node.id },
+      { nodeKey: node.node_key, nodeType: node.node_type, ...data },
+    );
   }
 
   checkProcessCompletion(instanceId) {
@@ -451,19 +642,37 @@ export class WorkflowEngine {
   haltWithIncident(token, node, type, message) {
     this.repo.setTokenState(token.id, 'WAITING');
     const incidentId = this.createIncident(token.process_instance_id, null, node?.id ?? token.node_id, type, message);
-    this.repo.addHistory(token.process_instance_id, 'INCIDENT_CREATED', { tokenId: token.id, nodeId: node?.id ?? token.node_id }, { incidentId, type, message });
+    this.repo.addHistory(
+      token.process_instance_id,
+      'INCIDENT_CREATED',
+      { tokenId: token.id, nodeId: node?.id ?? token.node_id },
+      { incidentId, type, message },
+    );
   }
 
   createIncident(instanceId, jobId, nodeId, type, message, details) {
-    return this.repo.insertIncident({ instanceId, jobId, nodeId, type, message, details: details ? JSON.stringify(details) : null });
+    return this.repo.insertIncident({
+      instanceId,
+      jobId,
+      nodeId,
+      type,
+      message,
+      details: details ? JSON.stringify(details) : null,
+    });
   }
 
   applyVariables(instanceId, variables) {
-    if (!variables || typeof variables !== 'object' || Array.isArray(variables)) throw new Error('Variables must be a JSON object');
+    if (!variables || typeof variables !== 'object' || Array.isArray(variables))
+      throw new Error('Variables must be a JSON object');
     const before = this.repo.variables(instanceId);
     this.repo.upsertVariables(instanceId, variables);
     for (const [name, value] of Object.entries(variables)) {
-      this.repo.addHistory(instanceId, Object.hasOwn(before, name) ? 'VARIABLE_UPDATED' : 'VARIABLE_CREATED', {}, { name, value });
+      this.repo.addHistory(
+        instanceId,
+        Object.hasOwn(before, name) ? 'VARIABLE_UPDATED' : 'VARIABLE_CREATED',
+        {},
+        { name, value },
+      );
     }
   }
 
@@ -477,7 +686,11 @@ export class WorkflowEngine {
 
 function parseJson(value, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
-  try { return JSON.parse(value); } catch { return fallback; }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function sqlTime(value = Date.now()) {
@@ -494,17 +707,71 @@ function timerDueAt(config) {
 }
 
 function mapToken(row) {
-  return { id: row.id, nodeId: row.node_id, nodeKey: row.node_key, nodeName: row.node_name, nodeType: row.node_type, parentTokenId: row.parent_token_id, state: row.state, createdAt: row.created_at, completedAt: row.completed_at };
+  return {
+    id: row.id,
+    nodeId: row.node_id,
+    nodeKey: row.node_key,
+    nodeName: row.node_name,
+    nodeType: row.node_type,
+    parentTokenId: row.parent_token_id,
+    state: row.state,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+  };
 }
 
 function mapTask(row) {
-  return { id: row.id, processInstanceId: row.process_instance_id, tokenId: row.token_id, nodeId: row.node_id, nodeKey: row.node_key, taskKey: row.task_key, name: row.name, status: row.status, assignee: row.assignee, candidateGroup: row.candidate_group, priority: row.priority, dueAt: row.due_at, createdAt: row.created_at, claimedAt: row.claimed_at, completedAt: row.completed_at, processKey: row.process_key, businessKey: row.business_key };
+  return {
+    id: row.id,
+    processInstanceId: row.process_instance_id,
+    tokenId: row.token_id,
+    nodeId: row.node_id,
+    nodeKey: row.node_key,
+    taskKey: row.task_key,
+    name: row.name,
+    status: row.status,
+    assignee: row.assignee,
+    candidateGroup: row.candidate_group,
+    priority: row.priority,
+    dueAt: row.due_at,
+    createdAt: row.created_at,
+    claimedAt: row.claimed_at,
+    completedAt: row.completed_at,
+    processKey: row.process_key,
+    businessKey: row.business_key,
+  };
 }
 
 function mapJob(row) {
-  return { id: row.id, processInstanceId: row.process_instance_id, tokenId: row.token_id, nodeId: row.node_id, type: row.job_type, status: row.status, payload: parseJson(row.payload_json, {}), retries: row.retries, dueAt: row.due_at, lockedBy: row.locked_by, lockedUntil: row.locked_until, lastError: row.last_error, createdAt: row.created_at, completedAt: row.completed_at };
+  return {
+    id: row.id,
+    processInstanceId: row.process_instance_id,
+    tokenId: row.token_id,
+    nodeId: row.node_id,
+    type: row.job_type,
+    status: row.status,
+    payload: parseJson(row.payload_json, {}),
+    retries: row.retries,
+    dueAt: row.due_at,
+    lockedBy: row.locked_by,
+    lockedUntil: row.locked_until,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+  };
 }
 
 function mapIncident(row) {
-  return { id: row.id, processInstanceId: row.process_instance_id, jobId: row.job_id, nodeId: row.node_id, type: row.incident_type, message: row.message, details: parseJson(row.details, row.details), status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at };
+  return {
+    id: row.id,
+    processInstanceId: row.process_instance_id,
+    jobId: row.job_id,
+    nodeId: row.node_id,
+    type: row.incident_type,
+    message: row.message,
+    details: parseJson(row.details, row.details),
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+  };
 }

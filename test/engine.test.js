@@ -6,28 +6,42 @@ import { join } from 'node:path';
 import { openDatabase } from '../workflow/database/database.js';
 import { WorkflowEngine } from '../workflow/engine/workflow-engine.js';
 
-function engine() { return new WorkflowEngine(openDatabase(':memory:')); }
+function engine() {
+  return new WorkflowEngine(openDatabase(':memory:'));
+}
 
 test('deploys, routes a user task, runs an external job, and preserves history', () => {
   const workflow = engine();
   try {
     const deployed = workflow.deploy({
-      key: 'approval', name: 'Approval',
+      key: 'approval',
+      name: 'Approval',
       nodes: [
         { key: 'start', type: 'START' },
         { key: 'review', type: 'USER_TASK', name: 'Review' },
         { key: 'decision', type: 'EXCLUSIVE_GATEWAY' },
         { key: 'notify', type: 'SERVICE_TASK', workerType: 'email.send', retries: 2 },
-        { key: 'end', type: 'END' }
+        { key: 'end', type: 'END' },
       ],
       edges: [
-        { from: 'start', to: 'review' }, { from: 'review', to: 'decision' },
+        { from: 'start', to: 'review' },
+        { from: 'review', to: 'decision' },
         { from: 'decision', to: 'notify', condition: 'approved == true', priority: 10 },
-        { from: 'decision', to: 'end' }, { from: 'notify', to: 'end' }
-      ]
+        { from: 'decision', to: 'end' },
+        { from: 'notify', to: 'end' },
+      ],
     });
     assert.equal(deployed.version, 1);
-    assert.equal(workflow.deploy({ ...withoutGraph(deployed), key: 'approval', name: 'Approval', nodes: deployed.nodes, edges: deployed.edges }).version, 2);
+    assert.equal(
+      workflow.deploy({
+        ...withoutGraph(deployed),
+        key: 'approval',
+        name: 'Approval',
+        nodes: deployed.nodes,
+        edges: deployed.edges,
+      }).version,
+      2,
+    );
 
     const started = workflow.startProcess('approval', { amount: 150 }, { businessKey: 'ORDER-1' });
     assert.equal(started.status, 'RUNNING');
@@ -43,23 +57,33 @@ test('deploys, routes a user task, runs an external job, and preserves history',
     assert.equal(completed.instance.status, 'COMPLETED');
     assert.equal(completed.instance.variables.notified, true);
     assert.ok(workflow.getHistory(started.id).some((event) => event.type === 'PROCESS_COMPLETED'));
-  } finally { workflow.close(); }
+  } finally {
+    workflow.close();
+  }
 });
 
 test('parallel split waits for both user-task branches before joining', () => {
   const workflow = engine();
   try {
     workflow.deploy({
-      key: 'parallel', name: 'Parallel',
+      key: 'parallel',
+      name: 'Parallel',
       nodes: [
-        { key: 'start', type: 'START' }, { key: 'split', type: 'PARALLEL_GATEWAY' },
-        { key: 'a', type: 'USER_TASK', name: 'A' }, { key: 'b', type: 'USER_TASK', name: 'B' },
-        { key: 'join', type: 'PARALLEL_GATEWAY' }, { key: 'end', type: 'END' }
+        { key: 'start', type: 'START' },
+        { key: 'split', type: 'PARALLEL_GATEWAY' },
+        { key: 'a', type: 'USER_TASK', name: 'A' },
+        { key: 'b', type: 'USER_TASK', name: 'B' },
+        { key: 'join', type: 'PARALLEL_GATEWAY' },
+        { key: 'end', type: 'END' },
       ],
       edges: [
-        { from: 'start', to: 'split' }, { from: 'split', to: 'a' }, { from: 'split', to: 'b' },
-        { from: 'a', to: 'join' }, { from: 'b', to: 'join' }, { from: 'join', to: 'end' }
-      ]
+        { from: 'start', to: 'split' },
+        { from: 'split', to: 'a' },
+        { from: 'split', to: 'b' },
+        { from: 'a', to: 'join' },
+        { from: 'b', to: 'join' },
+        { from: 'join', to: 'end' },
+      ],
     });
     const started = workflow.startProcess('parallel');
     assert.equal(started.tasks.length, 2);
@@ -67,7 +91,9 @@ test('parallel split waits for both user-task branches before joining', () => {
     assert.equal(first.instance.status, 'RUNNING');
     const second = workflow.completeTask(started.tasks[1].id);
     assert.equal(second.instance.status, 'COMPLETED');
-  } finally { workflow.close(); }
+  } finally {
+    workflow.close();
+  }
 });
 
 test('dead jobs create incidents and can be resolved and retried', () => {
@@ -83,19 +109,28 @@ test('dead jobs create incidents and can be resolved and retried', () => {
     workflow.resolveIncident(incident.id, { retryJob: true, retries: 2 });
     assert.equal(workflow.fetchAndLockJobs('worker').length, 1);
     assert.equal(workflow.getProcessInstance(started.id).status, 'RUNNING');
-  } finally { workflow.close(); }
+  } finally {
+    workflow.close();
+  }
 });
 
 test('durable timers and correlated messages resume waiting workflows', () => {
   const workflow = engine();
   try {
     workflow.deploy({
-      key: 'events', name: 'Events',
+      key: 'events',
+      name: 'Events',
       nodes: [
-        { key: 'start', type: 'START' }, { key: 'timer', type: 'TIMER', durationMs: 0 },
-        { key: 'message', type: 'MESSAGE', messageName: 'paid' }, { key: 'end', type: 'END' }
+        { key: 'start', type: 'START' },
+        { key: 'timer', type: 'TIMER', durationMs: 0 },
+        { key: 'message', type: 'MESSAGE', messageName: 'paid' },
+        { key: 'end', type: 'END' },
       ],
-      edges: [{ from: 'start', to: 'timer' }, { from: 'timer', to: 'message' }, { from: 'message', to: 'end' }]
+      edges: [
+        { from: 'start', to: 'timer' },
+        { from: 'timer', to: 'message' },
+        { from: 'message', to: 'end' },
+      ],
     });
     const started = workflow.startProcess('events', {}, { businessKey: 'ORDER-2' });
     assert.equal(workflow.runDueTimers().fired, 1);
@@ -103,7 +138,9 @@ test('durable timers and correlated messages resume waiting workflows', () => {
     assert.equal(finished.status, 'COMPLETED');
     assert.equal(finished.variables.paid, true);
     assert.equal(finished.id, started.id);
-  } finally { workflow.close(); }
+  } finally {
+    workflow.close();
+  }
 });
 
 test('ready work survives an engine and database restart', () => {
@@ -122,7 +159,9 @@ test('ready work survives an engine and database restart', () => {
       assert.equal(job.variables.durable, true);
       assert.equal(restarted.completeJob(job.id, 'restarted-worker').instance.status, 'COMPLETED');
       assert.equal(restarted.getProcessInstance(instanceId).status, 'COMPLETED');
-    } finally { restarted.close(); }
+    } finally {
+      restarted.close();
+    }
   } finally {
     if (first) first.close();
     rmSync(directory, { recursive: true, force: true });
@@ -131,9 +170,17 @@ test('ready work survives an engine and database restart', () => {
 
 function serviceDefinition(key, retries = 3) {
   return {
-    key, name: key,
-    nodes: [{ key: 'start', type: 'START' }, { key: 'work', type: 'SERVICE_TASK', workerType: 'work', retries }, { key: 'end', type: 'END' }],
-    edges: [{ from: 'start', to: 'work' }, { from: 'work', to: 'end' }]
+    key,
+    name: key,
+    nodes: [
+      { key: 'start', type: 'START' },
+      { key: 'work', type: 'SERVICE_TASK', workerType: 'work', retries },
+      { key: 'end', type: 'END' },
+    ],
+    edges: [
+      { from: 'start', to: 'work' },
+      { from: 'work', to: 'end' },
+    ],
   };
 }
 

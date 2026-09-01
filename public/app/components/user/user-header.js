@@ -1,8 +1,8 @@
-import BaseComponent from "../base-component.js";
+import BaseComponent from '../base-component.js';
 
 class Header extends BaseComponent {
   users = [];
-  
+
   constructor({ users, type }) {
     super();
     this.users = users;
@@ -23,8 +23,8 @@ class Header extends BaseComponent {
           children: [
             // this.createElement('a', {
             //   class: `btn btn-primary ${this.type === 'all' ? 'active' : ''}`,
-            //   href: '/users/all', 
-            //   innerText: 'all', 
+            //   href: '/users/all',
+            //   innerText: 'all',
             //   addEventListener: {
             //     name: 'click',
             //     handler: (e) => this.navigateTo('/users/all', e)
@@ -44,11 +44,11 @@ class Header extends BaseComponent {
             //     handler: (e) => this.navigateTo('/users/z', e)
             //   }
             // }),
-          ]
+          ],
         }),
         this.createElement('h1', { innerText: 'Users' }),
         this.createElement('hr'),
-      ]
+      ],
     });
 
     this.appendChild(header);
@@ -61,6 +61,6 @@ class Header extends BaseComponent {
   }
 }
 
-customElements.define("user-header", Header);
+customElements.define('user-header', Header);
 
 export default Header;

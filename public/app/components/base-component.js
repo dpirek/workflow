@@ -4,43 +4,43 @@ class BaseComponent extends HTMLElement {
   }
 
   createElement(tag, props) {
-    const element = (typeof tag === 'string')? document.createElement(tag) : tag;
-  
-    if(props) {
+    const element = typeof tag === 'string' ? document.createElement(tag) : tag;
+
+    if (props) {
       for (let key in props) {
-        if(key === 'children') continue;
-        if(key === 'addEventListener') continue;
-        if(key === 'innerHTML') continue;
-        if(key === 'innerText') continue;
+        if (key === 'children') continue;
+        if (key === 'addEventListener') continue;
+        if (key === 'innerHTML') continue;
+        if (key === 'innerText') continue;
         element.setAttribute(key, props[key]);
       }
-  
-      if(props.innerHTML) element.innerHTML = props.innerHTML;
-      if(props.innerText) element.innerText = props.innerText;
-  
-      if(props.addEventListener) {
+
+      if (props.innerHTML) element.innerHTML = props.innerHTML;
+      if (props.innerText) element.innerText = props.innerText;
+
+      if (props.addEventListener) {
         element.addEventListener(props.addEventListener.name, props.addEventListener.handler);
       }
-  
-      if(props.children) {
+
+      if (props.children) {
         this.appendChildren(element, props.children);
       }
-  
-      if(props.style) {
+
+      if (props.style) {
         for (let key in props.style) {
           element.style[key] = props.style[key];
         }
       }
     }
-    
+
     return element;
   }
 
   appendChildren(parent, children) {
-    children.forEach(child => {
+    children.forEach((child) => {
       if (child) {
         parent.appendChild(child);
-      } 
+      }
     });
   }
 
@@ -60,7 +60,7 @@ class BaseComponent extends HTMLElement {
   showNoActivityMessage(message = '', type = 'info', duration = 2000) {
     const messageElement = this.createElement('div', {
       class: `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3`,
-      innerText: message
+      innerText: message,
     });
 
     this.appendChild(messageElement);

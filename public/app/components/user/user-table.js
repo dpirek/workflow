@@ -34,31 +34,31 @@ class UserTable extends BaseComponent {
     return this.createElement('button', {
       class: 'btn btn-sm btn-danger',
       innerHTML: '<i class="bi bi-trash"></i>',
-      addEventListener: { 
-        name: 'click', 
+      addEventListener: {
+        name: 'click',
         handler: () => {
           fetch(`/api/user/${user.id}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user.username })
+            body: JSON.stringify({ username: user.username }),
           })
-          .then(response => response.json())
-          .then(data => {
-            // if (data.success) {
-            //   console.log(`${user.username} deleted successfully`);
-            //   this.users = this.users.filter(u => u.id !== user.id);
-            //   this.refresh();
-            // } else {
-            //   console.error('Error deleting user:', data.error);
-            // }
-          })
-          .catch(error => {
-            console.error('Error updating user:', error);
-          });
-        }
-      }
+            .then((response) => response.json())
+            .then((data) => {
+              // if (data.success) {
+              //   console.log(`${user.username} deleted successfully`);
+              //   this.users = this.users.filter(u => u.id !== user.id);
+              //   this.refresh();
+              // } else {
+              //   console.error('Error deleting user:', data.error);
+              // }
+            })
+            .catch((error) => {
+              console.error('Error updating user:', error);
+            });
+        },
+      },
     });
-}
+  }
 
   connectedCallback() {
     this.render(this.users);
@@ -77,12 +77,12 @@ class UserTable extends BaseComponent {
                 this.createElement('th', { innerText: 'Email' }),
                 this.createElement('th', { class: 'd-none d-md-table-cell', innerText: 'Date Created' }),
                 this.createElement('th', { innerText: '' }),
-              ]
-            })
-          ]
+              ],
+            }),
+          ],
         }),
         this.createElement('tbody', {
-          children: this.users.map(user => 
+          children: this.users.map((user) =>
             this.createElement('tr', {
               class: `user-sex-${user.sex}`,
               style: {
@@ -92,16 +92,14 @@ class UserTable extends BaseComponent {
                 this.createElement('td', { innerText: user.username }),
                 this.createElement('td', { innerText: user.email }),
                 this.createElement('td', { class: 'd-none d-md-table-cell', innerText: user.date }),
-                this.createElement('td', { 
-                  children: [
-                    this.deleteUserButton(user)
-                  ].filter(el => el !== null)
+                this.createElement('td', {
+                  children: [this.deleteUserButton(user)].filter((el) => el !== null),
                 }),
-              ]
-            })
-          )
-        })
-      ]
+              ],
+            }),
+          ),
+        }),
+      ],
     });
 
     this.appendChild(userTable);

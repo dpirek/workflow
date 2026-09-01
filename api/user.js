@@ -4,7 +4,7 @@ async function list() {
   return [
     { id: 1, username: 'user1', email: 'user1@example.com', date: '2024-06-01' },
     { id: 2, username: 'user2', email: 'user2@example.com', date: '2024-06-02' },
-    { id: 3, username: 'user3', email: 'user3@example.com', date: '2024-06-03' }
+    { id: 3, username: 'user3', email: 'user3@example.com', date: '2024-06-03' },
   ];
 }
 

@@ -2,24 +2,30 @@ const fs = require('fs');
 
 function minify(html) {
   return html
-    .replace(/\>[\r\n ]+\</g, "><")
-    .replace(/(<.*?>)|\s+/g, (m, $1) => $1 ? $1 : ' ')
+    .replace(/\>[\r\n ]+\</g, '><')
+    .replace(/(<.*?>)|\s+/g, (m, $1) => ($1 ? $1 : ' '))
     .trim();
 }
 
 function createUrl(text) {
-  return text.toLowerCase().replace(/[|&;$%@"<>()+,-]/g, '').replace(/ /g, '-').replace(/--/g, '-');
+  return text
+    .toLowerCase()
+    .replace(/[|&;$%@"<>()+,-]/g, '')
+    .replace(/ /g, '-')
+    .replace(/--/g, '-');
 }
 
 async function parseBody(req) {
   return new Promise((resolve, reject) => {
     const requestBody = [];
-    req.on('data', (chunk) => {
-      requestBody.push(chunk);
-    }).on('end', () => {
-      const body = Buffer.concat(requestBody).toString();
-      resolve(JSON.parse(body));
-    });
+    req
+      .on('data', (chunk) => {
+        requestBody.push(chunk);
+      })
+      .on('end', () => {
+        const body = Buffer.concat(requestBody).toString();
+        resolve(JSON.parse(body));
+      });
   });
 }
 
@@ -37,9 +43,9 @@ function json(res, obj) {
 }
 
 function formatStateName(text, states) {
-  if(text.length === 2) {
-    if(states[text.toUpperCase()]) {
-      return states[text.toUpperCase()]  + ' ' + text.toUpperCase() + '';
+  if (text.length === 2) {
+    if (states[text.toUpperCase()]) {
+      return states[text.toUpperCase()] + ' ' + text.toUpperCase() + '';
     } else {
       return text.toUpperCase();
     }
@@ -49,18 +55,25 @@ function formatStateName(text, states) {
 }
 
 function listWithUrl(list) {
-  return list.map(item => {
+  return list.map((item) => {
     item.url = createUrl(item.name);
     return item;
   });
 }
 
-function trim(text, length){
+function trim(text, length) {
   return text.length > length ? text.substring(0, length) + '...' : text;
 }
 
 function isStaticRequest(url) {
-  return url.includes('.js') || url.includes('.css') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') || url.includes('.gif');
+  return (
+    url.includes('.js') ||
+    url.includes('.css') ||
+    url.includes('.png') ||
+    url.includes('.jpg') ||
+    url.includes('.jpeg') ||
+    url.includes('.gif')
+  );
 }
 
 function isLocalRequest(req) {
@@ -83,7 +96,7 @@ function contentType(url) {
     map: 'application/json',
     woff: 'font/woff',
     '/': 'text/html',
-    '': 'text/plain'
+    '': 'text/plain',
   };
 
   return contentTypes[url.split('.').pop()];
@@ -96,23 +109,23 @@ function loadJson(path) {
   } catch (err) {
     console.error(err);
     return null;
-  } 
+  }
 }
 
 function loadText(path) {
   try {
-    return fs.readFileSync(path, 'utf8');;
+    return fs.readFileSync(path, 'utf8');
   } catch (err) {
     console.error(err);
     return null;
-  } 
+  }
 }
 
 function parseEnv() {
   const env = {};
   const envString = fs.readFileSync('.env', 'utf8');
   const envArray = envString.split('\n');
-  envArray.forEach(item => {
+  envArray.forEach((item) => {
     const key = item.split('=')[0];
     const value = item.split('=')[1];
     env[key] = value;
@@ -120,22 +133,25 @@ function parseEnv() {
   return env;
 }
 
-function htmlToText (html) {
+function htmlToText(html) {
   return html
-  .replace(/<[^>]+>/g, ' ') // remove html tags
-  .replace(/  +/g, '') // remove extra spaces
-  .replace(/Job Post Details/g, ' ') // remove header
-  .replace(/Return to Search Result/g, ' ') // remove nav txt
-  .replace(/\n\s*\n/g, '\n') // remove empty lines
-  .replace(/^\s+|\s+$/g, ''); // trim lines
+    .replace(/<[^>]+>/g, ' ') // remove html tags
+    .replace(/  +/g, '') // remove extra spaces
+    .replace(/Job Post Details/g, ' ') // remove header
+    .replace(/Return to Search Result/g, ' ') // remove nav txt
+    .replace(/\n\s*\n/g, '\n') // remove empty lines
+    .replace(/^\s+|\s+$/g, ''); // trim lines
 }
 
-function textToHtml (text) {  
-  return text.split('\n').map(line => {
-    if(line.trim() === '') return '';
-    if(line.includes('#')) return `<h3>${line.replace('#', '')}</h3>`;
-    return `<p>${line}</p>`;
-  }).join(''); 
+function textToHtml(text) {
+  return text
+    .split('\n')
+    .map((line) => {
+      if (line.trim() === '') return '';
+      if (line.includes('#')) return `<h3>${line.replace('#', '')}</h3>`;
+      return `<p>${line}</p>`;
+    })
+    .join('');
 }
 
 module.exports = {
@@ -153,5 +169,5 @@ module.exports = {
   parseEnv,
   htmlToText,
   textToHtml,
-  loadText
+  loadText,
 };

@@ -11,9 +11,9 @@ export function openDatabase(path = process.env.WORKFLOW_DB_PATH || resolve('db/
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
 
-  const initialized = db.prepare(
-    "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'process_definition'"
-  ).get();
+  const initialized = db
+    .prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'process_definition'")
+    .get();
   if (!initialized) db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
 
   // Additive, idempotent runtime indexes. The supplied schema remains the source of truth.

@@ -16,8 +16,13 @@ async function shutdown(signal) {
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => shutdown(signal).then(() => process.exit(0), (error) => {
-    console.error(error);
-    process.exit(1);
-  }));
+  process.on(signal, () =>
+    shutdown(signal).then(
+      () => process.exit(0),
+      (error) => {
+        console.error(error);
+        process.exit(1);
+      },
+    ),
+  );
 }

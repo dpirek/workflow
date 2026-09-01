@@ -1,8 +1,15 @@
 import { validateExpression } from '../expression/evaluator.js';
 
 const NODE_TYPES = new Set([
-  'START', 'END', 'USER_TASK', 'SERVICE_TASK', 'SCRIPT_TASK',
-  'EXCLUSIVE_GATEWAY', 'PARALLEL_GATEWAY', 'TIMER', 'MESSAGE'
+  'START',
+  'END',
+  'USER_TASK',
+  'SERVICE_TASK',
+  'SCRIPT_TASK',
+  'EXCLUSIVE_GATEWAY',
+  'PARALLEL_GATEWAY',
+  'TIMER',
+  'MESSAGE',
 ]);
 
 export function validateDefinition(definition) {
@@ -36,7 +43,11 @@ export function validateDefinition(definition) {
     if (!edge?.to || !nodeKeys.has(edge.to)) errors.push(`edge references unknown target: ${edge?.to}`);
     if (edge?.from && outgoing.has(edge.from)) outgoing.get(edge.from).push(edge);
     if (edge?.condition !== undefined && edge.condition !== null) {
-      try { validateExpression(edge.condition); } catch (error) { errors.push(`invalid condition on ${edge.from}->${edge.to}: ${error.message}`); }
+      try {
+        validateExpression(edge.condition);
+      } catch (error) {
+        errors.push(`invalid condition on ${edge.from}->${edge.to}: ${error.message}`);
+      }
     }
   }
   if (starts[0] && outgoing.get(starts[0].key)?.length !== 1) errors.push('START must have exactly one outgoing edge');
@@ -47,7 +58,10 @@ export function validateDefinition(definition) {
     const queue = [starts[0].key];
     while (queue.length) {
       for (const edge of outgoing.get(queue.shift()) || []) {
-        if (!reached.has(edge.to)) { reached.add(edge.to); queue.push(edge.to); }
+        if (!reached.has(edge.to)) {
+          reached.add(edge.to);
+          queue.push(edge.to);
+        }
       }
     }
     for (const node of definition.nodes) if (!reached.has(node.key)) errors.push(`unreachable node: ${node.key}`);

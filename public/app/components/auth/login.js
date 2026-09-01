@@ -1,6 +1,6 @@
-import BaseComponent from "../base-component.js";
+import BaseComponent from '../base-component.js';
 
-class Login extends BaseComponent {  
+class Login extends BaseComponent {
   constructor() {
     super();
   }
@@ -17,23 +17,35 @@ class Login extends BaseComponent {
           class: 'mb-3',
           children: [
             this.createElement('label', { for: 'username', class: 'form-label', innerText: 'Username' }),
-            this.createElement('input', { type: 'text', class: 'form-control', id: 'username', name: 'username', required: true })
-          ]
+            this.createElement('input', {
+              type: 'text',
+              class: 'form-control',
+              id: 'username',
+              name: 'username',
+              required: true,
+            }),
+          ],
         }),
         this.createElement('div', {
           class: 'mb-3',
           children: [
             this.createElement('label', { for: 'password', class: 'form-label', innerText: 'Password' }),
-            this.createElement('input', { type: 'password', class: 'form-control', id: 'password', name: 'password', required: true })
-          ]
+            this.createElement('input', {
+              type: 'password',
+              class: 'form-control',
+              id: 'password',
+              name: 'password',
+              required: true,
+            }),
+          ],
         }),
         this.createElement('button', { type: 'submit', class: 'btn btn-primary', innerText: 'Login' }),
-        this.createElement('div', { id: 'loginError', class: 'mt-3 text-danger' })
+        this.createElement('div', { id: 'loginError', class: 'mt-3 text-danger' }),
       ],
       addEventListener: {
         name: 'submit',
-        handler: (e) => this.handleLogin(e)
-      }
+        handler: (e) => this.handleLogin(e),
+      },
     });
   }
 
@@ -52,23 +64,19 @@ class Login extends BaseComponent {
                   children: [
                     this.createElement('div', {
                       class: 'card-header',
-                      children: [
-                        this.createElement('h3', { innerText: 'Login' })
-                      ]
+                      children: [this.createElement('h3', { innerText: 'Login' })],
                     }),
                     this.createElement('div', {
                       class: 'card-body',
-                      children: [
-                        this.getLoginForm()
-                      ]
-                    })
-                  ]
-                })
-              ]
-            })
-          ]
-        })
-      ]
+                      children: [this.getLoginForm()],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
     });
 
     this.appendChild(loginForm);
@@ -85,7 +93,7 @@ class Login extends BaseComponent {
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
       });
 
       const result = await response.json();

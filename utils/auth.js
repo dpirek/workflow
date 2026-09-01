@@ -26,21 +26,22 @@ function decryptCookie(cookie) {
 
 function getCookie(req, key) {
   const cookies = {};
-  req.headers.cookie && req.headers.cookie.split(';').forEach(cookie => {
-    const parts = cookie.split('=');
-    cookies[parts[0].trim()] = (parts[1] || '').trim();
-  });
+  req.headers.cookie &&
+    req.headers.cookie.split(';').forEach((cookie) => {
+      const parts = cookie.split('=');
+      cookies[parts[0].trim()] = (parts[1] || '').trim();
+    });
   return cookies[key];
 }
 
 function setCookie(res, key, value, options = {}) {
   const cookieParts = [`${key}=${value}`];
-  if(options.httpOnly) cookieParts.push('HttpOnly');
-  if(options.maxAge) cookieParts.push(`Max-Age=${options.maxAge}`);
-  if(options.path) cookieParts.push(`Path=${options.path}`);
-  if(options.domain) cookieParts.push(`Domain=${options.domain}`);
-  if(options.secure) cookieParts.push('Secure');
-  if(options.sameSite) cookieParts.push(`SameSite=${options.sameSite}`);
+  if (options.httpOnly) cookieParts.push('HttpOnly');
+  if (options.maxAge) cookieParts.push(`Max-Age=${options.maxAge}`);
+  if (options.path) cookieParts.push(`Path=${options.path}`);
+  if (options.domain) cookieParts.push(`Domain=${options.domain}`);
+  if (options.secure) cookieParts.push('Secure');
+  if (options.sameSite) cookieParts.push(`SameSite=${options.sameSite}`);
   res.setHeader('Set-Cookie', cookieParts.join('; '));
 }
 
@@ -55,10 +56,10 @@ function getUserFromRequest(req) {
 }
 
 function login(res, username, role = 'user') {
-  const authData = { 
-    username, 
-    role, 
-    date: new Date().toISOString() 
+  const authData = {
+    username,
+    role,
+    date: new Date().toISOString(),
   };
 
   const encrypted = encryptCookie(authData);
@@ -77,5 +78,5 @@ module.exports = {
   removeCookie,
   login,
   logout,
-  getUserFromRequest
+  getUserFromRequest,
 };

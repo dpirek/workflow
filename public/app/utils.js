@@ -64,24 +64,16 @@ function getQueryParams() {
 
 const html = (input) => {
   return String.raw(input);
-}
+};
 
 const css = (strings, ...values) => {
   return String.raw({ raw: strings }, ...values.map(htmlEncode));
-}
+};
 
 // Markdown template literal tag
 const md = (input) => {
   const rawString = String.raw(input);
   return markdownToHtml(rawString);
-}
-
-
-export { 
-  timeAgo, 
-  concatenate, 
-  html, 
-  css, 
-  md, 
-  getQueryParams 
 };
+
+export { timeAgo, concatenate, html, css, md, getQueryParams };

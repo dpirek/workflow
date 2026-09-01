@@ -24,12 +24,12 @@ function route() {
     match: (url, method) => {
       const params = {};
       const queryParams = getQueryParams(url);
-      
+
       url = getBaseUrl(url);
 
-      const route = routes.find(r => {
+      const route = routes.find((r) => {
         if (r.method && r.method !== method) return false;
-        
+
         const keys = r.path.match(/:\w+/g);
         if (!keys) return r.path === url;
         const regex = new RegExp('^' + r.path.replace(/:\w+/g, '(\\w+)') + '$');
@@ -42,15 +42,17 @@ function route() {
         return match;
       });
 
-      return route ? { 
-        handler: route.handler, 
-        params,
-        queryParams,
-        type: route.type,
-        auth: route.auth,
-        response: route.response ? route.response : null
-      } : null;
-    }
+      return route
+        ? {
+            handler: route.handler,
+            params,
+            queryParams,
+            type: route.type,
+            auth: route.auth,
+            response: route.response ? route.response : null,
+          }
+        : null;
+    },
   };
 }
 
