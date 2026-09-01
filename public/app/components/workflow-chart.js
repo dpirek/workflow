@@ -20,6 +20,9 @@ const STROKES = {
   TIMER: '#4b91ed',
   MESSAGE: '#4b91ed',
 };
+const NODE_WIDTH = 138;
+const NODE_HEIGHT = 68;
+const COLUMN_SPACING = 190;
 const escapeXml = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
@@ -43,6 +46,32 @@ const ICON_PATHS = {
 function nodeIcon(type, x, y) {
   const paths = ICON_PATHS[type] || '<circle cx="0" cy="0" r="6"/><path d="M-3 0h6"/>';
   return `<g class="chart-node-icon" transform="translate(${x} ${y})" fill="none" stroke="${STROKES[type] || '#8795aa'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
+}
+
+export function routeConnector(a, b, height, index = 0, obstructed) {
+  const x1 = a.x + NODE_WIDTH / 2;
+  const x2 = b.x - NODE_WIDTH / 2;
+  const adjacentGap = COLUMN_SPACING - NODE_WIDTH;
+
+  const needsDetour = obstructed ?? x2 - x1 > adjacentGap + 1;
+  if (x2 > x1 && !needsDetour) {
+    const mid = (x1 + x2) / 2;
+    return {
+      path: `M${x1} ${a.y} H${mid} V${b.y} H${x2}`,
+      labelX: mid,
+      labelY: (a.y + b.y) / 2 - 8,
+    };
+  }
+
+  const routeAbove = index % 2 === 0;
+  const lane = routeAbove ? 30 + (index % 3) * 10 : height - 30 - (index % 3) * 10;
+  const sourceExit = x1 + 18;
+  const targetEntry = x2 - 18;
+  return {
+    path: `M${x1} ${a.y} H${sourceExit} V${lane} H${targetEntry} V${b.y} H${x2}`,
+    labelX: (sourceExit + targetEntry) / 2,
+    labelY: lane - 8,
+  };
 }
 
 export class WorkflowChart {
@@ -108,8 +137,8 @@ export class WorkflowChart {
     });
     const ranks = [...columns.keys()].sort((a, b) => a - b);
     const pad = 34;
-    const nodeWidth = 138;
-    const columnSpacing = 190;
+    const nodeWidth = NODE_WIDTH;
+    const columnSpacing = COLUMN_SPACING;
     const layoutWidth = Math.max(width, pad * 2 + nodeWidth + Math.max(0, ranks.length - 1) * columnSpacing);
     const gapX = ranks.length > 1 ? (layoutWidth - pad * 2 - nodeWidth) / (ranks.length - 1) : 0;
     const maxRows = Math.max(1, ...[...columns.values()].map((list) => list.length));
@@ -128,19 +157,18 @@ export class WorkflowChart {
     this.width = measuredWidth;
     const width = Math.max(480, measuredWidth);
     const { width: layoutWidth, height, nodeWidth, positions, edges, nodes } = this.layout(width);
-    const nodeHeight = 68;
+    const nodeHeight = NODE_HEIGHT;
     const marker = `arrow-${this.definition.id}`;
     const edgeSvg = edges
       .map((edge, index) => {
         const a = positions.get(edge.from),
           b = positions.get(edge.to);
         if (!a || !b) return '';
-        const x1 = a.x + nodeWidth / 2,
-          x2 = b.x - nodeWidth / 2,
-          mid = (x1 + x2) / 2,
-          approachX = x2 - (x2 - x1) * 0.2,
-          approachY = b.y - (b.y - a.y) * 0.2;
-        const path = `M${x1} ${a.y} C${mid} ${a.y},${approachX} ${approachY},${x2} ${b.y}`;
+        const obstructed = nodes.some((node) => {
+          const position = positions.get(node.key);
+          return position && position.x > a.x && position.x < b.x;
+        });
+        const { path } = routeConnector(a, b, height, index, obstructed);
         return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/></g>`;
       })
       .join('');
@@ -150,10 +178,11 @@ export class WorkflowChart {
         const a = positions.get(edge.from),
           b = positions.get(edge.to);
         if (!a || !b) return '';
-        const x1 = a.x + nodeWidth / 2,
-          x2 = b.x - nodeWidth / 2,
-          x = (x1 + x2) / 2,
-          y = (a.y + b.y) / 2 - 8,
+        const obstructed = nodes.some((node) => {
+          const position = positions.get(node.key);
+          return position && position.x > a.x && position.x < b.x;
+        });
+        const { labelX: x, labelY: y } = routeConnector(a, b, height, index, obstructed),
           bubbleWidth = Math.max(64, Math.min(520, String(edge.condition).length * 6.5 + 32));
         return `<g class="chart-edge-description" data-edge-description="${index}" transform="translate(${x} ${y})"><rect x="${-bubbleWidth / 2}" y="-19" width="${bubbleWidth}" height="30" rx="7"/><text y="1">${escapeXml(edge.condition)}</text></g>`;
       })
