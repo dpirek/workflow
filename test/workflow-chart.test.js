@@ -52,7 +52,7 @@ test('long and backward connectors route outside the node grid', () => {
   const backward = routeConnector({ x: 600, y: 220 }, { x: 100, y: 110 }, 400, 1);
 
   assert.match(long.path, /V30/);
-  assert.match(backward.path, /V360/);
+  assert.match(backward.path, /V30/);
   assert.ok(!long.path.includes(' C'));
   assert.ok(!backward.path.includes(' C'));
 });
@@ -62,4 +62,12 @@ test('adjacent connectors use right-angle segments', () => {
 
   assert.equal(route.path, 'M169 80 H195 V180 H221');
   assert.ok(!route.path.includes(' C'));
+});
+
+test('obstructed connectors choose the shortest outer lane', () => {
+  const upperRoute = routeConnector({ x: 100, y: 90 }, { x: 600, y: 160 }, 400, 0, true);
+  const lowerRoute = routeConnector({ x: 100, y: 300 }, { x: 600, y: 340 }, 400, 0, true);
+
+  assert.match(upperRoute.path, /V30/);
+  assert.match(lowerRoute.path, /V370/);
 });

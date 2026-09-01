@@ -48,7 +48,7 @@ function nodeIcon(type, x, y) {
   return `<g class="chart-node-icon" transform="translate(${x} ${y})" fill="none" stroke="${STROKES[type] || '#8795aa'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
 }
 
-export function routeConnector(a, b, height, index = 0, obstructed) {
+export function routeConnector(a, b, height, _index = 0, obstructed) {
   const x1 = a.x + NODE_WIDTH / 2;
   const x2 = b.x - NODE_WIDTH / 2;
   const adjacentGap = COLUMN_SPACING - NODE_WIDTH;
@@ -63,8 +63,11 @@ export function routeConnector(a, b, height, index = 0, obstructed) {
     };
   }
 
-  const routeAbove = index % 2 === 0;
-  const lane = routeAbove ? 30 + (index % 3) * 10 : height - 30 - (index % 3) * 10;
+  const topLane = 30;
+  const bottomLane = height - 30;
+  const topDistance = Math.abs(a.y - topLane) + Math.abs(b.y - topLane);
+  const bottomDistance = Math.abs(a.y - bottomLane) + Math.abs(b.y - bottomLane);
+  const lane = topDistance <= bottomDistance ? topLane : bottomLane;
   const sourceExit = x1 + 18;
   const targetEntry = x2 - 18;
   return {
