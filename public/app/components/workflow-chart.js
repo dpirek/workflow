@@ -119,7 +119,8 @@ export class WorkflowChart {
         const x1 = a.x + nodeWidth / 2,
           x2 = b.x - nodeWidth / 2,
           mid = (x1 + x2) / 2;
-        return `<path d="M${x1} ${a.y} C${mid} ${a.y},${mid} ${b.y},${x2} ${b.y}" fill="none" stroke="#8190a5" stroke-width="2"/><text x="${mid}" y="${(a.y + b.y) / 2 - 8}">${escapeXml(edge.condition || '')}</text>`;
+        const path = `M${x1} ${a.y} C${mid} ${a.y},${mid} ${b.y},${x2} ${b.y}`;
+        return `<g class="chart-edge" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/><text class="chart-edge-description" x="${mid}" y="${(a.y + b.y) / 2 - 8}">${escapeXml(edge.condition || '')}</text></g>`;
       })
       .join('');
     const nodeSvg = nodes
@@ -129,7 +130,7 @@ export class WorkflowChart {
         return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
-    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges" marker-end="url(#${marker})">${edgeSvg}</g>${nodeSvg}</svg>`;
+    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}</svg>`;
     this.bindInteractions();
   }
 
