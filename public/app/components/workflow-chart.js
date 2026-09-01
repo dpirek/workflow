@@ -118,8 +118,10 @@ export class WorkflowChart {
         if (!a || !b) return '';
         const x1 = a.x + nodeWidth / 2,
           x2 = b.x - nodeWidth / 2,
-          mid = (x1 + x2) / 2;
-        const path = `M${x1} ${a.y} C${mid} ${a.y},${mid} ${b.y},${x2} ${b.y}`;
+          mid = (x1 + x2) / 2,
+          approachX = x2 - (x2 - x1) * 0.2,
+          approachY = b.y - (b.y - a.y) * 0.2;
+        const path = `M${x1} ${a.y} C${mid} ${a.y},${approachX} ${approachY},${x2} ${b.y}`;
         return `<g class="chart-edge" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/><text class="chart-edge-description" x="${mid}" y="${(a.y + b.y) / 2 - 8}">${escapeXml(edge.condition || '')}</text></g>`;
       })
       .join('');
