@@ -8,6 +8,8 @@ let state = {
   view: 'overview',
   workflowId: null,
   selectedNodeKey: null,
+  selectedRequestId: null,
+  selectedTaskId: null,
   workflows: [],
   instances: [],
   tasks: [],
@@ -16,8 +18,14 @@ let state = {
 };
 let workflowCharts = [];
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || state.view !== 'workflow-detail' || !state.selectedNodeKey) return;
+  if (
+    event.key !== 'Escape' ||
+    (!state.selectedNodeKey && state.selectedRequestId === null && state.selectedTaskId === null)
+  )
+    return;
   state.selectedNodeKey = null;
+  state.selectedRequestId = null;
+  state.selectedTaskId = null;
   render();
 });
 const api = (p, o = {}) =>
@@ -94,6 +102,26 @@ function render() {
       render();
     };
   });
+  document.querySelectorAll('[data-close-detail]').forEach((element) => {
+    element.onclick = (event) => {
+      if (event.target !== element && !element.matches('button')) return;
+      state.selectedRequestId = null;
+      state.selectedTaskId = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-request-id]').forEach((element) => {
+    element.onclick = () => {
+      state.selectedRequestId = Number(element.dataset.requestId);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-task-id]').forEach((element) => {
+    element.onclick = () => {
+      state.selectedTaskId = Number(element.dataset.taskId);
+      render();
+    };
+  });
   document.querySelectorAll('[data-assign-task]').forEach((form) => {
     form.onsubmit = async (event) => {
       event.preventDefault();
@@ -126,20 +154,96 @@ function render() {
 function page() {
   if (state.view === 'workflows') return workflowList();
   if (state.view === 'workflow-detail') return workflowDetail();
-  if (state.view === 'requests')
-    return panel(
-      'Workflow requests',
-      state.instances.map((i) => [i.processKey, i.businessKey || '—', i.status]),
-    );
-  if (state.view === 'tasks')
-    return panel(
-      'Human tasks',
-      state.tasks.map((t) => [t.name, t.assignee || 'Unassigned', t.status]),
-    );
+  if (state.view === 'requests') return requestList();
+  if (state.view === 'tasks') return taskList();
   return `<section class="stats"><div><small>WORKFLOWS</small><strong>${state.workflows.length}</strong><span>deployed definitions</span></div><div><small>RUNNING REQUESTS</small><strong>${state.instances.filter((i) => i.status === 'RUNNING').length}</strong><span>active executions</span></div><div><small>OPEN TASKS</small><strong>${state.tasks.filter((t) => t.status !== 'COMPLETED').length}</strong><span>awaiting action</span></div></section>${panel(
     'Recent activity',
     state.instances.slice(0, 5).map((i) => [i.processKey, i.businessKey || 'No business key', i.status]),
   )}`;
+}
+
+function requestList() {
+  const rows = state.instances
+    .map(
+      (request) =>
+        `<button class="row detail-row" data-request-id="${request.id}"><span class="dot">◇</span><span><b>${esc(request.processName || request.processKey)}</b><small>${esc(request.businessKey || `Request #${request.id}`)}</small></span><label class="status">${esc(request.status)}</label><span class="workflow-list-arrow">→</span></button>`,
+    )
+    .join('');
+  return `<section class="panel"><div class="panel-head"><div><h2>Workflow requests</h2><p class="muted">Select a request to view its details.</p></div><em>${state.instances.length}</em></div>${rows || '<div class="empty">Nothing to show yet.</div>'}</section>${requestDetailDrawer()}`;
+}
+
+function taskList() {
+  const rows = state.tasks
+    .map(
+      (task) =>
+        `<button class="row detail-row" data-task-id="${task.id}"><span class="dot">◇</span><span><b>${esc(task.name)}</b><small>${esc(task.assignee || 'Unassigned')}</small></span><label class="status">${esc(task.status)}</label><span class="workflow-list-arrow">→</span></button>`,
+    )
+    .join('');
+  return `<section class="panel"><div class="panel-head"><div><h2>Human tasks</h2><p class="muted">Select a task to view its details.</p></div><em>${state.tasks.length}</em></div>${rows || '<div class="empty">Nothing to show yet.</div>'}</section>${taskDetailDrawer()}`;
+}
+
+function requestDetailDrawer() {
+  const request = state.instances.find((item) => item.id === state.selectedRequestId);
+  if (!request) return '';
+  const tasks = state.tasks.filter((task) => task.processInstanceId === request.id);
+  return detailDrawer(
+    'Request',
+    request.businessKey || `Request #${request.id}`,
+    request.status,
+    [
+      ['Workflow', request.processName || request.processKey],
+      ['Process key', request.processKey],
+      ['Version', request.version],
+      ['Started', formatDate(request.startedAt)],
+      ['Ended', formatDate(request.endedAt)],
+    ],
+    `<section class="drawer-section"><h3>Tasks</h3>${
+      tasks.length
+        ? tasks
+            .map(
+              (task) =>
+                `<div class="drawer-detail"><span>${esc(task.name)}</span><b>${esc(task.assignee || task.status)}</b></div>`,
+            )
+            .join('')
+        : '<p class="muted">No tasks for this request.</p>'
+    }</section>`,
+  );
+}
+
+function taskDetailDrawer() {
+  const task = state.tasks.find((item) => item.id === state.selectedTaskId);
+  if (!task) return '';
+  const assignment =
+    task.status === 'CREATED'
+      ? `<section class="drawer-section"><h3>Assignment</h3><form class="drawer-assignment" data-assign-task="${task.id}"><input name="assignee" type="email" value="${esc(state.user.email)}" aria-label="Assignee email" required><button type="submit">Assign</button><small class="assignment-error"></small></form></section>`
+      : `<section class="drawer-section"><h3>Assignment</h3><div class="drawer-detail"><span>Assigned to</span><b>${esc(task.assignee || 'Unassigned')}</b></div></section>`;
+  return detailDrawer(
+    'Human task',
+    task.name,
+    task.status,
+    [
+      ['Workflow', task.processKey],
+      ['Request', task.businessKey || `#${task.processInstanceId}`],
+      ['Node', task.nodeKey],
+      ['Priority', task.priority],
+      ['Created', formatDate(task.createdAt)],
+      ['Due', formatDate(task.dueAt)],
+    ],
+    assignment,
+  );
+}
+
+function detailDrawer(type, title, status, details, content = '') {
+  return `<div class="node-drawer-backdrop" data-close-detail><aside class="node-drawer" role="dialog" aria-modal="true" aria-label="${esc(title)} details"><button class="drawer-close" data-close-detail aria-label="Close">×</button><p class="eyebrow">${esc(type)}</p><h2>${esc(title)}</h2><p><label class="status">${esc(status)}</label></p><section class="drawer-section"><h3>Details</h3>${details
+    .filter(([, value]) => value !== undefined && value !== null && value !== '—')
+    .map(([label, value]) => `<div class="drawer-detail"><span>${esc(label)}</span><b>${esc(value)}</b></div>`)
+    .join('')}</section>${content}</aside></div>`;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function pageTitle() {
@@ -234,11 +338,13 @@ router
   })
   .addRoute('/requests', () => {
     state.view = 'requests';
+    state.selectedRequestId = null;
     render();
   })
   .addRoute('/instances', () => router.navigate('/requests', { replace: true }))
   .addRoute('/tasks', () => {
     state.view = 'tasks';
+    state.selectedTaskId = null;
     render();
   })
   .addRoute('/login', () => auth())
