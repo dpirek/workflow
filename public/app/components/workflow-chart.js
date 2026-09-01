@@ -27,9 +27,10 @@ const escapeXml = (value) =>
   );
 
 export class WorkflowChart {
-  constructor(container, definition) {
+  constructor(container, definition, options = {}) {
     this.container = container;
     this.definition = definition;
+    this.onNodeSelect = options.onNodeSelect;
     this.width = null;
     this.frame = null;
     this.resize = (entries) => {
@@ -125,10 +126,24 @@ export class WorkflowChart {
       .map((node) => {
         const p = positions.get(node.key),
           radius = node.type.includes('GATEWAY') ? 30 : 10;
-        return `<g class="chart-node chart-${node.type.toLowerCase()}"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
+        return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
     this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges" marker-end="url(#${marker})">${edgeSvg}</g>${nodeSvg}</svg>`;
+    this.bindInteractions();
+  }
+
+  bindInteractions() {
+    if (!this.onNodeSelect) return;
+    this.container.querySelectorAll('[data-node-key]').forEach((element) => {
+      const select = () => this.onNodeSelect(element.dataset.nodeKey);
+      element.addEventListener('click', select);
+      element.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        select();
+      });
+    });
   }
 
   destroy() {
@@ -138,12 +153,13 @@ export class WorkflowChart {
   }
 }
 
-export function mountWorkflowCharts(root, definitions) {
+export function mountWorkflowCharts(root, definitions, options = {}) {
   return [...root.querySelectorAll('[data-workflow-chart]')].map(
     (container) =>
       new WorkflowChart(
         container,
         definitions.find((item) => String(item.id) === container.dataset.workflowChart),
+        options,
       ),
   );
 }

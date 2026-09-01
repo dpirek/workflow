@@ -7,6 +7,7 @@ let state = {
   user: null,
   view: 'overview',
   workflowId: null,
+  selectedNodeKey: null,
   workflows: [],
   instances: [],
   tasks: [],
@@ -14,6 +15,11 @@ let state = {
   incidents: [],
 };
 let workflowCharts = [];
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || state.view !== 'workflow-detail' || !state.selectedNodeKey) return;
+  state.selectedNodeKey = null;
+  render();
+});
 const api = (p, o = {}) =>
   fetch(p, { headers: { 'content-type': 'application/json' }, ...o }).then(async (r) => {
     const d = await r.json();
@@ -81,7 +87,40 @@ function render() {
     state.user = null;
     router.navigate('/login');
   };
-  if (state.view === 'workflow-detail') workflowCharts = mountWorkflowCharts(app, state.workflows);
+  document.querySelectorAll('[data-close-node]').forEach((element) => {
+    element.onclick = (event) => {
+      if (event.target !== element && !element.matches('button')) return;
+      state.selectedNodeKey = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-assign-task]').forEach((form) => {
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      const error = form.querySelector('.assignment-error');
+      button.disabled = true;
+      error.textContent = '';
+      try {
+        await api(`/api/tasks/${form.dataset.assignTask}/claim`, {
+          method: 'POST',
+          body: JSON.stringify({ assignee: new FormData(form).get('assignee') }),
+        });
+        await load();
+      } catch (requestError) {
+        error.textContent = requestError.message;
+        button.disabled = false;
+      }
+    };
+  });
+  if (state.view === 'workflow-detail') {
+    workflowCharts = mountWorkflowCharts(app, state.workflows, {
+      onNodeSelect(nodeKey) {
+        state.selectedNodeKey = nodeKey;
+        render();
+      },
+    });
+  }
 }
 
 function page() {
@@ -128,7 +167,47 @@ function workflowDetail() {
 
   const instances = state.instances.filter((instance) => instance.processKey === workflow.key);
   const running = instances.filter((instance) => instance.status === 'RUNNING').length;
-  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Workflow nodes and transitions.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>`;
+  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Select any item to view details.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>${nodeDetailDrawer(workflow)}`;
+}
+
+function nodeDetailDrawer(workflow) {
+  const node = workflow.nodes?.find((item) => item.key === state.selectedNodeKey);
+  if (!node) return '';
+
+  const instanceIds = new Set(
+    state.instances
+      .filter((instance) => String(instance.processDefinitionId) === String(workflow.id))
+      .map((instance) => instance.id),
+  );
+  const tasks = state.tasks.filter(
+    (task) => task.nodeKey === node.key && instanceIds.has(task.processInstanceId) && task.status !== 'COMPLETED',
+  );
+  const incoming = workflow.edges?.filter((edge) => edge.to === node.key).length || 0;
+  const outgoing = workflow.edges?.filter((edge) => edge.from === node.key).length || 0;
+  const taskContent =
+    node.type === 'USER_TASK'
+      ? `<section class="drawer-section"><h3>Assignments</h3>${
+          tasks.length
+            ? tasks
+                .map(
+                  (task) =>
+                    `<div class="drawer-task"><div><b>${esc(task.name)}</b><small>${esc(task.businessKey || `Request #${task.processInstanceId}`)}</small></div>${
+                      task.status === 'CREATED'
+                        ? `<form data-assign-task="${task.id}"><input name="assignee" type="email" value="${esc(state.user.email)}" aria-label="Assignee email" required><button type="submit">Assign</button><small class="assignment-error"></small></form>`
+                        : `<span><small>Assigned to</small><b>${esc(task.assignee)}</b></span>`
+                    }</div>`,
+                )
+                .join('')
+            : '<p class="muted">No active tasks for this item.</p>'
+        }</section>`
+      : '<section class="drawer-section"><h3>Assignments</h3><p class="muted">Assignments are available for user tasks.</p></section>';
+
+  return `<div class="node-drawer-backdrop" data-close-node><aside class="node-drawer" role="dialog" aria-modal="true" aria-label="${esc(node.name || node.key)} details"><button class="drawer-close" data-close-node aria-label="Close">×</button><p class="eyebrow">${esc(node.type.replaceAll('_', ' '))}</p><h2>${esc(node.name || node.key)}</h2><p class="muted">${esc(node.key)}</p><section class="drawer-properties"><div><small>INCOMING</small><strong>${incoming}</strong></div><div><small>OUTGOING</small><strong>${outgoing}</strong></div><div><small>ACTIVE TASKS</small><strong>${tasks.length}</strong></div></section><section class="drawer-section"><h3>Details</h3>${
+    Object.entries(node)
+      .filter(([key]) => !['key', 'name', 'type'].includes(key))
+      .map(([key, value]) => `<div class="drawer-detail"><span>${esc(key)}</span><b>${esc(value)}</b></div>`)
+      .join('') || '<p class="muted">No additional configuration.</p>'
+  }</section>${taskContent}</aside></div>`;
 }
 
 function panel(title, rows) {
@@ -144,11 +223,13 @@ router
   .addRoute('/workflows', () => {
     state.view = 'workflows';
     state.workflowId = null;
+    state.selectedNodeKey = null;
     render();
   })
   .addRoute('/workflows/:id', ({ params }) => {
     state.view = 'workflow-detail';
     state.workflowId = params.id;
+    state.selectedNodeKey = null;
     render();
   })
   .addRoute('/requests', () => {

@@ -1,19 +1,20 @@
 import { createServer } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'node:crypto';
 import { openDatabase } from './workflow/database/database.js';
+import { createUser, findUserByEmail, migrateLegacyUsers } from './workflow/database/users.js';
 import { WorkflowEngine } from './workflow/engine/workflow-engine.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const publicRoot = join(root, 'public');
 const usersPath = resolve(process.env.USERS_PATH || 'db/users.json');
-mkdirSync(dirname(usersPath), { recursive: true });
-const engine = new WorkflowEngine(openDatabase());
+const database = openDatabase();
+migrateLegacyUsers(database, usersPath);
+const engine = new WorkflowEngine(database);
 const sessions = new Map();
 const secret = process.env.AUTH_SECRET || 'change-this-secret-in-production';
-let users = existsSync(usersPath) ? JSON.parse(readFileSync(usersPath, 'utf8')) : [];
 const json = (res, status, value, headers = {}) => {
   res.writeHead(status, { 'content-type': 'application/json', ...headers });
   res.end(JSON.stringify(value));
@@ -34,9 +35,6 @@ function currentUser(req) {
     .find((x) => x.startsWith('workflow_session='))
     ?.split('=')[1];
   return (raw && sessions.get(raw)) || null;
-}
-function saveUsers() {
-  writeFileSync(usersPath, JSON.stringify(users, null, 2));
 }
 function requireUser(req, res) {
   const user = currentUser(req);
@@ -68,7 +66,7 @@ const server = createServer(async (req, res) => {
         .toLowerCase();
       if (!name || !normalized || !password || password.length < 8)
         return json(res, 400, { error: 'Name, email, and a password of at least 8 characters are required' });
-      if (users.some((item) => item.email === normalized))
+      if (findUserByEmail(database, normalized))
         return json(res, 409, { error: 'An account with that email already exists' });
       const salt = randomBytes(16).toString('hex');
       const userData = {
@@ -80,8 +78,7 @@ const server = createServer(async (req, res) => {
         hash: scryptSync(password, salt, 64).toString('hex'),
         createdAt: new Date().toISOString(),
       };
-      users.push(userData);
-      saveUsers();
+      createUser(database, userData);
       const session = sessionToken(userData);
       const safe = { id: userData.id, name: userData.name, email: userData.email, role: userData.role };
       sessions.set(session, safe);
@@ -94,13 +91,7 @@ const server = createServer(async (req, res) => {
     }
     if (path === '/api/auth/login' && req.method === 'POST') {
       const { email, password } = await body(req);
-      const found = users.find(
-        (item) =>
-          item.email ===
-          String(email || '')
-            .trim()
-            .toLowerCase(),
-      );
+      const found = findUserByEmail(database, email);
       const hash = found && scryptSync(password || '', found.salt, 64);
       if (!found || !timingSafeEqual(Buffer.from(found.hash, 'hex'), hash))
         return json(res, 401, { error: 'Invalid email or password' });

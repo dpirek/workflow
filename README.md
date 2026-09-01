@@ -11,18 +11,18 @@ npm install
 npm start
 ```
 
-Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in `db/users.json` and sessions use HTTP-only cookies. The dashboard exposes workflow definitions, requests, and human tasks through authenticated JSON APIs.
+Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in the workflow SQLite database and sessions use HTTP-only cookies. Existing accounts in `db/users.json` are imported automatically. The dashboard exposes workflow definitions, requests, and human tasks through authenticated JSON APIs.
 
 The workflow MCP endpoint remains available through the engine module at:
 
-- MCP: `http://127.0.0.1:3000/mcp` (when running `workflow/index.js`)
-- Health: `http://127.0.0.1:8080/health`
+- MCP: `http://127.0.0.1:8081/mcp` (when running `npm run start:mcp`)
+- MCP health: `http://127.0.0.1:8081/health`
 - SQLite: `db/workflow.db`
 
 Configuration:
 
 ```bash
-HOST=127.0.0.1 PORT=3000 WORKFLOW_DB_PATH=./db/workflow.db npm start
+HOST=127.0.0.1 PORT=8081 WORKFLOW_DB_PATH=./db/workflow.db npm run start:mcp
 ```
 
 The server is intentionally bound to loopback by default and has no authentication. Add an authentication gateway before exposing it on a network.
@@ -33,7 +33,7 @@ Example MCP client configuration:
 {
   "mcpServers": {
     "workflow": {
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:8081/mcp"
     }
   }
 }

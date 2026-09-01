@@ -1,6 +1,25 @@
 PRAGMA foreign_keys = ON;
 
 -- ==========================================================
+-- APPLICATION USERS
+-- ==========================================================
+
+CREATE TABLE app_user (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    email           TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    role            TEXT NOT NULL DEFAULT 'user',
+    password_salt   TEXT NOT NULL,
+    password_hash   TEXT NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE app_migration (
+    name            TEXT PRIMARY KEY,
+    applied_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==========================================================
 -- PROCESS DEFINITIONS
 -- ==========================================================
 

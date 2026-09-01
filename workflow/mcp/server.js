@@ -3,7 +3,7 @@ import { buildMcpServer } from './tools.js';
 
 export async function startHttpServer(engine, options = {}) {
   const host = options.host || process.env.HOST || '127.0.0.1';
-  const port = Number(options.port ?? process.env.PORT ?? 3000);
+  const port = Number(options.port ?? process.env.PORT ?? 8081);
   const mcp = buildMcpServer(engine);
   const httpServer = createServer(async (req, res) => {
     const path = (req.url || '/').split('?')[0];
