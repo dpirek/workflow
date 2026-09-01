@@ -29,12 +29,28 @@ test('serves workflow tools through Streamable HTTP MCP', async () => {
     });
     assert.equal(deploy.result.isError, undefined);
     assert.equal(deploy.result.structuredContent.result.version, 1);
+    const definitionId = deploy.result.structuredContent.result.id;
 
     const start = await rpc(http.url, 'tools/call', {
       name: 'start_process',
       arguments: { processKey: 'http-flow', variables: {} },
     });
     assert.equal(start.result.structuredContent.result.status, 'COMPLETED');
+
+    const startById = await rpc(http.url, 'tools/call', {
+      name: 'start_process',
+      arguments: { definitionId, variables: { source: 'definition-id' } },
+    });
+    assert.equal(startById.result.isError, undefined);
+    assert.equal(startById.result.structuredContent.result.processDefinitionId, definitionId);
+    assert.equal(startById.result.structuredContent.result.variables.source, 'definition-id');
+
+    const invalidStart = await rpc(http.url, 'tools/call', {
+      name: 'start_process',
+      arguments: { variables: {} },
+    });
+    assert.equal(invalidStart.result.isError, true);
+    assert.match(invalidStart.result.content[0].text, /requires processKey or definitionId/);
 
     const health = await fetch(`${http.url}/health`);
     assert.equal(health.status, 200);
