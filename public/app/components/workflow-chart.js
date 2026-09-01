@@ -26,6 +26,25 @@ const escapeXml = (value) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
 
+const ICON_PATHS = {
+  START: '<circle cx="0" cy="0" r="7"/><path d="m-2.5-4 6 4-6 4Z"/>',
+  END: '<circle cx="0" cy="0" r="7"/><rect x="-3" y="-3" width="6" height="6" rx="1"/>',
+  USER_TASK:
+    '<circle cx="0" cy="-3.5" r="3"/><path d="M-6 7c.5-4 2.5-6 6-6s5.5 2 6 6M-3 7v-2M3 7v-2"/>',
+  SERVICE_TASK:
+    '<circle cx="0" cy="0" r="2.5"/><path d="M0-8v3M0 5v3M-8 0h3M5 0h3M-5.7-5.7l2.2 2.2M3.5 3.5l2.2 2.2M5.7-5.7 3.5-3.5M-3.5 3.5l-2.2 2.2"/>',
+  SCRIPT_TASK: '<path d="m-5-4-4 4 4 4M5-4l4 4-4 4M2-7-4 14"/>',
+  EXCLUSIVE_GATEWAY: '<path d="M0-8 8 0 0 8-8 0Z"/><path d="m-3-3 6 6M3-3l-6 6"/>',
+  PARALLEL_GATEWAY: '<path d="M0-8 8 0 0 8-8 0Z"/><path d="M0-4v8M-4 0h8"/>',
+  TIMER: '<circle cx="0" cy="0" r="8"/><path d="M0-4v5l3 2"/>',
+  MESSAGE: '<rect x="-9" y="-6" width="18" height="12" rx="2"/><path d="m-8-4 8 6 8-6"/>',
+};
+
+function nodeIcon(type, x, y) {
+  const paths = ICON_PATHS[type] || '<circle cx="0" cy="0" r="6"/><path d="M-3 0h6"/>';
+  return `<g class="chart-node-icon" transform="translate(${x} ${y})" fill="none" stroke="${STROKES[type] || '#8795aa'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
+}
+
 export class WorkflowChart {
   constructor(container, definition, options = {}) {
     this.container = container;
@@ -143,7 +162,7 @@ export class WorkflowChart {
       .map((node) => {
         const p = positions.get(node.key),
           radius = node.type.includes('GATEWAY') ? 30 : 10;
-        return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/><text class="chart-type" x="${p.x}" y="${p.y - 7}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 13}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
+        return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/>${nodeIcon(node.type, p.x, p.y - 20)}<text class="chart-type" x="${p.x}" y="${p.y + 1}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 20}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
     this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}<g class="chart-edge-descriptions">${edgeDescriptionSvg}</g></svg>`;
