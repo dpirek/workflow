@@ -43,14 +43,32 @@ const server = createServer(async (req, res) => {
     if (path === '/api/auth/logout' && req.method === 'POST') { const raw = (req.headers.cookie || '').split(';').map((x) => x.trim()).find((x) => x.startsWith('workflow_session='))?.split('=')[1]; if (raw) sessions.delete(raw); return json(res, 200, { ok: true }, { 'set-cookie': 'workflow_session=; HttpOnly; Path=/; Max-Age=0' }); }
     if (path.startsWith('/api/')) {
       if (!requireUser(req, res)) return;
-      if (path === '/api/workflows' && req.method === 'GET') return json(res, 200, { workflows: engine.listDefinitions() });
+      if (path === '/api/workflows' && req.method === 'GET') return json(res, 200, { workflows: engine.listDefinitions().map(item => engine.getDefinition(item.id)) });
       if (path === '/api/workflows' && req.method === 'POST') return json(res, 201, { workflow: engine.deploy((await body(req)).definition) });
       if (path === '/api/instances' && req.method === 'GET') return json(res, 200, { instances: engine.listProcessInstances({ limit: 100 }) });
       if (path === '/api/instances' && req.method === 'POST') { const input = await body(req); return json(res, 201, { instance: engine.startProcess(input.processKey, input.variables || {}, { businessKey: input.businessKey }) }); }
       if (path === '/api/tasks' && req.method === 'GET') return json(res, 200, { tasks: engine.listTasks({ limit: 100 }) });
+      if (path === '/api/jobs' && req.method === 'GET') {
+        const rows = engine.db.prepare('SELECT id, process_instance_id AS processInstanceId, node_id AS nodeId, job_type AS type, status, payload_json, retries, due_at AS dueAt, locked_by AS lockedBy, locked_until AS lockedUntil, last_error AS lastError, created_at AS createdAt, completed_at AS completedAt FROM job ORDER BY id DESC LIMIT 500').all();
+        return json(res, 200, { jobs: rows.map(row => ({ ...row, payload: JSON.parse(row.payload_json || '{}'), payload_json: undefined })) });
+      }
+      if (path === '/api/incidents' && req.method === 'GET') return json(res, 200, { incidents: engine.listIncidents({ limit: 100 }) });
+      const processMatch = path.match(/^\/api\/processes\/(\d+)(?:\/(history|variables))?$/);
+      if (processMatch && req.method === 'GET') { const id = Number(processMatch[1]); if (processMatch[2] === 'history') return json(res, 200, { history: engine.getHistory(id) }); if (processMatch[2] === 'variables') return json(res, 200, { variables: engine.getProcessInstance(id).variables }); return json(res, 200, { process: engine.getProcessInstance(id) }); }
+      const taskAction = path.match(/^\/api\/tasks\/(\d+)\/(claim|complete)$/);
+      if (taskAction && req.method === 'POST') { const input = await body(req); const result = taskAction[2] === 'claim' ? engine.claimTask(Number(taskAction[1]), input.assignee || user.email) : engine.completeTask(Number(taskAction[1]), input.variables || {}); return json(res, 200, { task: result }); }
+      const jobAction = path.match(/^\/api\/jobs\/(\d+)\/retry$/);
+      if (jobAction && req.method === 'POST') return json(res, 200, { job: engine.retryJob(Number(jobAction[1]), 3, 0) });
+      const incidentAction = path.match(/^\/api\/incidents\/(\d+)\/resolve$/);
+      if (incidentAction && req.method === 'POST') return json(res, 200, { incident: engine.resolveIncident(Number(incidentAction[1]), { retryJob: Boolean((await body(req)).retryJob) }) });
       return json(res, 404, { error: 'API route not found' });
     }
-    if (req.method === 'GET') { const file = safePath(path); if (file && existsSync(file)) { res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream' }); return res.end(readFileSync(file)); } }
+    if (req.method === 'GET') {
+      const file = safePath(path);
+      if (file && existsSync(file)) { res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream' }); return res.end(readFileSync(file)); }
+      // Client-side routes all use the same SPA entry point.
+      if (!path.includes('.')) { res.writeHead(200, { 'content-type': types['.html'] }); return res.end(readFileSync(join(publicRoot, 'index.html'))); }
+    }
     json(res, 404, { error: 'Not found' });
   } catch (error) { json(res, 400, { error: error.message }); }
 });
