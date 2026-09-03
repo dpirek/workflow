@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { routeConnector, WorkflowChart } from '../public/app/components/workflow-chart.js';
+import { allocateConnectorSides } from '../public/app/components/workflow-connectors.js';
 
 test('workflow chart layout terminates for cyclic graphs', () => {
   const definition = {
@@ -72,16 +73,77 @@ test('long and backward connectors use the editor cubic renderer', () => {
   const long = routeConnector({ x: 100, y: 110 }, { x: 600, y: 220 }, 400, 0);
   const backward = routeConnector({ x: 600, y: 220 }, { x: 100, y: 110 }, 400, 1);
 
-  assert.equal(long.path, 'M 166 110 C 350 110, 350 220, 534 220');
-  assert.equal(backward.path, 'M 666 220 C 850 220, -150 110, 34 110');
+  assert.equal(long.path, 'M 166 110 C 345 110, 345 220, 524 220');
+  assert.equal(backward.path, 'M 534 220 C 355 220, 355 110, 176 110');
   assert.equal((long.path.match(/C/g) || []).length, 1);
   assert.equal((backward.path.match(/C/g) || []).length, 1);
+});
+
+test('vertical connectors leave and enter through the nearest box sides', () => {
+  const downward = routeConnector({ x: 300, y: 100 }, { x: 330, y: 400 });
+  const upward = routeConnector({ x: 330, y: 400 }, { x: 300, y: 100 });
+
+  assert.equal(downward.direction, 'vertical');
+  assert.deepEqual(downward.start, { x: 300, y: 138 });
+  assert.deepEqual(downward.end, { x: 330, y: 362 });
+  assert.deepEqual(downward.lineEnd, { x: 330, y: 352 });
+  assert.equal(downward.path, 'M 300 138 C 300 245, 330 245, 330 352');
+  assert.deepEqual(upward.start, { x: 330, y: 362 });
+  assert.deepEqual(upward.end, { x: 300, y: 138 });
+  assert.deepEqual(upward.lineEnd, { x: 300, y: 148 });
+  assert.equal(upward.path, 'M 330 362 C 330 255, 300 255, 300 148');
+});
+
+test('horizontal connectors use left and right box sides', () => {
+  const rightward = routeConnector({ x: 100, y: 100 }, { x: 400, y: 130 });
+  const leftward = routeConnector({ x: 400, y: 130 }, { x: 100, y: 100 });
+
+  assert.equal(rightward.direction, 'horizontal');
+  assert.deepEqual(rightward.start, { x: 166, y: 100 });
+  assert.deepEqual(rightward.end, { x: 334, y: 130 });
+  assert.deepEqual(rightward.lineEnd, { x: 324, y: 130 });
+  assert.deepEqual(leftward.start, { x: 334, y: 130 });
+  assert.deepEqual(leftward.end, { x: 166, y: 100 });
+  assert.deepEqual(leftward.lineEnd, { x: 176, y: 100 });
+});
+
+test('multiple connectors claim the next closest unused side', () => {
+  const positions = new Map([
+    ['parent', { x: 500, y: 100 }],
+    ['left-child', { x: 430, y: 400 }],
+    ['right-child', { x: 570, y: 400 }],
+    ['center-child', { x: 500, y: 500 }],
+  ]);
+  const assignments = allocateConnectorSides(positions, [
+    { from: 'parent', to: 'left-child' },
+    { from: 'parent', to: 'right-child' },
+    { from: 'parent', to: 'center-child' },
+  ]);
+
+  assert.deepEqual(assignments.map(({ sourceSide }) => sourceSide), ['bottom', 'right', 'left']);
+  assert.equal(new Set(assignments.map(({ sourceSide }) => sourceSide)).size, 3);
+  assert.deepEqual(assignments.map(({ targetSide }) => targetSide), ['top', 'top', 'top']);
+});
+
+test('incoming and outgoing connectors share the same side allocation', () => {
+  const positions = new Map([
+    ['above', { x: 500, y: 80 }],
+    ['hub', { x: 500, y: 300 }],
+    ['also-above', { x: 540, y: 80 }],
+  ]);
+  const assignments = allocateConnectorSides(positions, [
+    { from: 'above', to: 'hub' },
+    { from: 'hub', to: 'also-above' },
+  ]);
+
+  assert.equal(assignments[0].targetSide, 'top');
+  assert.notEqual(assignments[1].sourceSide, 'top');
 });
 
 test('adjacent connectors use a fluid cubic curve', () => {
   const route = routeConnector({ x: 100, y: 80 }, { x: 290, y: 180 }, 300, 0, false);
 
-  assert.equal(route.path, 'M 166 80 C 195 80, 195 180, 224 180');
+  assert.equal(route.path, 'M 166 80 C 190 80, 190 180, 214 180');
   assert.ok(!route.path.includes(' H'));
   assert.ok(!route.path.includes(' V'));
 });
@@ -90,6 +152,6 @@ test('connector rendering is unaffected by display-only routing hints', () => {
   const upperRoute = routeConnector({ x: 100, y: 90 }, { x: 600, y: 160 }, 400, 0, true);
   const lowerRoute = routeConnector({ x: 100, y: 300 }, { x: 600, y: 340 }, 400, 0, true);
 
-  assert.equal(upperRoute.path, 'M 166 90 C 350 90, 350 160, 534 160');
-  assert.equal(lowerRoute.path, 'M 166 300 C 350 300, 350 340, 534 340');
+  assert.equal(upperRoute.path, 'M 166 90 C 345 90, 345 160, 524 160');
+  assert.equal(lowerRoute.path, 'M 166 300 C 345 300, 345 340, 524 340');
 });

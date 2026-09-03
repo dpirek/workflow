@@ -1,4 +1,10 @@
-import { fluidConnector, WORKFLOW_EDGE_COLOR } from './workflow-connectors.js';
+import {
+  allocateConnectorSides,
+  fluidConnector,
+  WORKFLOW_EDGE_COLOR,
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from './workflow-connectors.js';
 
 const NODE_TYPES = [
   ['START', 'Start', '○'],
@@ -23,6 +29,11 @@ const COLORS = {
   TIMER: '#e0f2fe',
   MESSAGE: '#fce7f3',
 };
+const GRID_SIZE = 20;
+
+export function snapToGrid(value, minimum, maximum, size = GRID_SIZE) {
+  return Math.max(minimum, Math.min(maximum, Math.round(value / size) * size));
+}
 
 const escapeHtml = (value) =>
   String(value ?? '').replace(
@@ -162,19 +173,26 @@ export class WorkflowEditor {
 
   svg() {
     const nodeByKey = new Map(this.draft.nodes.map((node) => [node.key, node]));
+    const connectorSides = allocateConnectorSides(nodeByKey, this.draft.edges);
     const edges = this.draft.edges.map((edge, index) => {
       const from = nodeByKey.get(edge.from), to = nodeByKey.get(edge.to);
       if (!from || !to) return '';
-      const { path, labelX, labelY } = fluidConnector(from, to);
+      const { path, labelX, labelY } = fluidConnector(
+        from,
+        to,
+        WORKFLOW_NODE_WIDTH,
+        WORKFLOW_NODE_HEIGHT,
+        connectorSides[index],
+      );
       const selected = this.selected?.kind === 'edge' && this.selected.index === index;
       return `<g class="editor-edge${selected ? ' selected' : ''}" data-edge="${index}"><path class="editor-edge-hit" d="${path}"/><path class="editor-edge-line" d="${path}" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#editor-arrow)"/>${edge.condition ? `<text x="${labelX}" y="${labelY}">${escapeHtml(edge.condition)}</text>` : ''}</g>`;
     }).join('');
     const nodes = this.draft.nodes.map((node, index) => {
       const selected = this.selected?.kind === 'node' && this.selected.index === index;
       const icon = NODE_TYPES.find(([type]) => type === node.type)?.[2] || '◇';
-      return `<g class="editor-node${selected ? ' selected' : ''}${this.connectingFrom === node.key ? ' connecting' : ''}" data-node="${index}" transform="translate(${node.x} ${node.y})" role="button" tabindex="0"><rect x="-66" y="-38" width="132" height="76" rx="${node.type.includes('GATEWAY') ? 28 : 12}" fill="${COLORS[node.type]}"/><text class="editor-node-icon" y="-10">${escapeHtml(icon)}</text><text class="editor-node-label" y="14">${escapeHtml(node.name.slice(0, 20))}</text><text class="editor-node-type" y="29">${node.type.replaceAll('_', ' ')}</text><circle class="editor-port" data-port="${index}" cx="66" cy="0" r="7"/></g>`;
+      return `<g class="editor-node${selected ? ' selected' : ''}${this.connectingFrom === node.key ? ' connecting' : ''}" data-node="${index}" transform="translate(${node.x} ${node.y})" role="button" tabindex="0"><rect x="${-WORKFLOW_NODE_WIDTH / 2}" y="${-WORKFLOW_NODE_HEIGHT / 2}" width="${WORKFLOW_NODE_WIDTH}" height="${WORKFLOW_NODE_HEIGHT}" rx="${node.type.includes('GATEWAY') ? 28 : 12}" fill="${COLORS[node.type]}"/><text class="editor-node-icon" y="-10">${escapeHtml(icon)}</text><text class="editor-node-label" y="14">${escapeHtml(node.name.slice(0, 20))}</text><text class="editor-node-type" y="29">${node.type.replaceAll('_', ' ')}</text><circle class="editor-port" data-port="${index}" cx="${WORKFLOW_NODE_WIDTH / 2}" cy="0" r="7"/></g>`;
     }).join('');
-    return `<svg class="workflow-editor-svg" viewBox="0 0 1000 600" aria-label="Workflow editor canvas"><defs><pattern id="editor-grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce5f2"/></pattern><marker id="editor-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="${WORKFLOW_EDGE_COLOR}"/></marker></defs><rect width="1000" height="600" fill="url(#editor-grid)"/>${edges}${nodes}</svg>`;
+    return `<svg class="workflow-editor-svg" viewBox="0 0 1000 600" aria-label="Workflow editor canvas"><defs><pattern id="editor-grid" width="${GRID_SIZE}" height="${GRID_SIZE}" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce5f2"/></pattern><marker id="editor-arrow" markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L10 5L0 10Z" fill="${WORKFLOW_EDGE_COLOR}"/></marker></defs><rect width="1000" height="600" fill="url(#editor-grid)"/>${edges}${nodes}</svg>`;
   }
 
   inspector() {
@@ -324,9 +342,15 @@ export class WorkflowEditor {
   }
 
   finishDrag() {
-    const moved = this.drag?.moved;
+    const drag = this.drag;
+    const moved = drag?.moved;
     this.drag = null;
-    if (moved) this.saveLayout();
+    if (!moved) return;
+    const node = this.draft.nodes[drag.index];
+    node.x = snapToGrid(node.x, 80, 920);
+    node.y = snapToGrid(node.y, 60, 540);
+    this.render();
+    this.saveLayout();
   }
 
   saveLayout() {
@@ -352,9 +376,16 @@ export class WorkflowEditor {
 
   refreshEdges(svg) {
     const nodeByKey = new Map(this.draft.nodes.map((node) => [node.key, node]));
+    const connectorSides = allocateConnectorSides(nodeByKey, this.draft.edges);
     this.draft.edges.forEach((edge, index) => {
       const from = nodeByKey.get(edge.from), to = nodeByKey.get(edge.to);
-      const { path } = fluidConnector(from, to);
+      const { path } = fluidConnector(
+        from,
+        to,
+        WORKFLOW_NODE_WIDTH,
+        WORKFLOW_NODE_HEIGHT,
+        connectorSides[index],
+      );
       svg.querySelectorAll(`[data-edge="${index}"] path`).forEach((item) => item.setAttribute('d', path));
     });
   }

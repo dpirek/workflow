@@ -3,9 +3,17 @@ import test from 'node:test';
 import {
   createDefaultWorkflow,
   createWorkflowDraft,
+  snapToGrid,
   validateWorkflowDraft,
   workflowDefinition,
 } from '../public/app/components/workflow-editor.js';
+
+test('snaps released node coordinates to the nearest canvas grid point', () => {
+  assert.equal(snapToGrid(113, 80, 920), 120);
+  assert.equal(snapToGrid(109, 80, 920), 100);
+  assert.equal(snapToGrid(41, 80, 920), 80);
+  assert.equal(snapToGrid(959, 80, 920), 920);
+});
 
 test('creates a valid starter workflow and serializes editor coordinates as config', () => {
   const draft = createDefaultWorkflow();
