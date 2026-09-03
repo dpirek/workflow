@@ -46,9 +46,11 @@ test('deploys, routes a user task, runs an external job, and preserves history',
     const started = workflow.startProcess('approval', { amount: 150 }, { businessKey: 'ORDER-1' });
     assert.equal(started.status, 'RUNNING');
     assert.equal(started.tasks[0].status, 'CREATED');
+    assert.deepEqual(workflow.listProcessInstances()[0].progress, { completed: 0, remaining: 3, total: 3 });
     workflow.claimTask(started.tasks[0].id, 'alice');
     const completedTask = workflow.completeTask(started.tasks[0].id, { approved: true });
     assert.equal(completedTask.instance.jobs[0].status, 'READY');
+    assert.deepEqual(workflow.listProcessInstances()[0].progress, { completed: 2, remaining: 1, total: 3 });
 
     const jobs = workflow.fetchAndLockJobs('worker-1', { workerTypes: ['email.send'] });
     assert.equal(jobs.length, 1);
@@ -56,6 +58,7 @@ test('deploys, routes a user task, runs an external job, and preserves history',
     const completed = workflow.completeJob(jobs[0].id, 'worker-1', { notified: true });
     assert.equal(completed.instance.status, 'COMPLETED');
     assert.equal(completed.instance.variables.notified, true);
+    assert.deepEqual(workflow.listProcessInstances()[0].progress, { completed: 3, remaining: 0, total: 3 });
     assert.ok(workflow.getHistory(started.id).some((event) => event.type === 'PROCESS_COMPLETED'));
   } finally {
     workflow.close();

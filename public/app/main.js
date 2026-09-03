@@ -1,4 +1,6 @@
 import Router from './router.js';
+import { chatPage } from './components/chat-page.js';
+import { requestProgressGraphic } from './components/request-progress.js';
 import { mountWorkflowCharts } from './components/workflow-chart.js';
 import { WorkflowEditor } from './components/workflow-editor.js';
 
@@ -17,6 +19,12 @@ let state = {
   tasks: [],
   jobs: [],
   incidents: [],
+  chatSessions: [],
+  activeChat: null,
+  chatRunning: false,
+  chatImages: [],
+  chatController: null,
+  promptHistory: [],
 };
 let workflowCharts = [];
 let workflowEditor = null;
@@ -65,12 +73,13 @@ function auth(mode = 'login', error = '') {
 }
 
 async function load() {
-  const [w, i, t, j, n] = await Promise.all([
+  const [w, i, t, j, n, c] = await Promise.all([
     api('/api/workflows'),
     api('/api/instances'),
     api('/api/tasks'),
     api('/api/jobs'),
     api('/api/incidents'),
+    api('/api/chat/sessions'),
   ]);
   Object.assign(state, {
     workflows: w.workflows,
@@ -78,7 +87,12 @@ async function load() {
     tasks: t.tasks,
     jobs: j.jobs,
     incidents: n.incidents,
+    chatSessions: c.sessions,
   });
+  if (state.activeChat && !c.sessions.some((session) => session.id === state.activeChat.id)) state.activeChat = null;
+  if (window.location.pathname === '/chat' && !state.activeChat && state.chatSessions.length) {
+    await loadChatSession(state.chatSessions[0].id);
+  }
   router.render();
 }
 
@@ -89,12 +103,14 @@ function render() {
   workflowEditor = null;
   const menu = [
     ['overview', 'Overview'],
+    ['chat', 'Chat'],
     ['workflows', 'Workflows'],
     ['requests', 'Requests'],
     ['tasks', 'Tasks'],
   ];
   const isEditor = ['workflow-new', 'workflow-edit'].includes(state.view);
-  app.innerHTML = `<div class="shell${state.sidebarCollapsed ? ' sidebar-collapsed' : ''}"><aside><div class="sidebar-head"><button class="brand sidebar-brand" type="button" aria-label="Flow${state.sidebarCollapsed ? ' — expand navigation' : ''}" title="${state.sidebarCollapsed ? 'Expand navigation' : 'Flow'}"><span class="brand-mark">✦</span><b>Flow</b></button><button class="sidebar-toggle" type="button" aria-expanded="${!state.sidebarCollapsed}" aria-label="Collapse navigation" title="Collapse navigation"><img src="/sidebar-toggle.svg" alt=""></button></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && ['workflow-detail', 'workflow-new', 'workflow-edit'].includes(state.view)) ? 'active' : ''}" data-path="/${id}" aria-label="${label}" title="${label}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout" aria-label="Sign out" title="Sign out">↗</button></div></aside><main class="content${isEditor ? ' editor-content' : ''}"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div>${isEditor ? '' : '<button id="refresh" class="refresh" aria-label="Refresh">↻</button>'}</header>${page()}</main></div>`;
+  const isChat = state.view === 'chat';
+  app.innerHTML = `<div class="shell${state.sidebarCollapsed ? ' sidebar-collapsed' : ''}"><aside><div class="sidebar-head"><button class="brand sidebar-brand" type="button" aria-label="Flow${state.sidebarCollapsed ? ' — expand navigation' : ''}" title="${state.sidebarCollapsed ? 'Expand navigation' : 'Flow'}"><span class="brand-mark">✦</span><b>Flow</b></button><button class="sidebar-toggle" type="button" aria-expanded="${!state.sidebarCollapsed}" aria-label="Collapse navigation" title="Collapse navigation"><img src="/sidebar-toggle.svg" alt=""></button></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && ['workflow-detail', 'workflow-new', 'workflow-edit'].includes(state.view)) ? 'active' : ''}" data-path="/${id}" aria-label="${label}" title="${label}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout" aria-label="Sign out" title="Sign out">↗</button></div></aside><main class="content${isEditor ? ' editor-content' : ''}${isChat ? ' chat-content' : ''}">${isChat ? page() : `<header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div>${isEditor ? '' : '<button id="refresh" class="refresh" aria-label="Refresh">↻</button>'}</header>${page()}`}</main></div>`;
   const setSidebarCollapsed = (collapsed) => {
     state.sidebarCollapsed = collapsed;
     localStorage.setItem('flow.sidebar.collapsed', String(state.sidebarCollapsed));
@@ -117,6 +133,7 @@ function render() {
     state.user = null;
     router.navigate('/login');
   };
+  if (isChat) bindChat();
   document.querySelectorAll('[data-close-node]').forEach((element) => {
     element.onclick = (event) => {
       if (event.target !== element && !element.matches('button')) return;
@@ -207,6 +224,12 @@ function render() {
 }
 
 function page() {
+  if (state.view === 'chat') return chatPage({
+    sessions: state.chatSessions,
+    activeSession: state.activeChat,
+    running: state.chatRunning,
+    draftImages: state.chatImages,
+  });
   if (state.view === 'workflows') return workflowList();
   if (state.view === 'workflow-new') return '<div data-workflow-editor></div>';
   if (state.view === 'workflow-edit') {
@@ -224,11 +247,232 @@ function page() {
   )}`;
 }
 
+function bindChat() {
+  const form = document.querySelector('[data-chat-form]');
+  const input = form.querySelector('textarea');
+  const send = form.querySelector('.chat-send');
+  let historyIndex = state.promptHistory.length;
+  const resize = () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+    send.disabled = !input.value.trim();
+  };
+  input.addEventListener('input', resize);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    } else if (!input.value && ['ArrowUp', 'ArrowDown'].includes(event.key) && state.promptHistory.length) {
+      event.preventDefault();
+      historyIndex = Math.max(0, Math.min(state.promptHistory.length, historyIndex + (event.key === 'ArrowUp' ? -1 : 1)));
+      input.value = state.promptHistory[historyIndex] || '';
+      resize();
+    }
+  });
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const prompt = input.value.trim();
+    if (!prompt) return;
+    let session = state.activeChat;
+    if (!session) {
+      session = (await api('/api/chat/sessions', { method: 'POST', body: '{}' })).session;
+      state.activeChat = session;
+      state.chatSessions.unshift(session);
+    }
+    state.promptHistory.push(prompt);
+    session.messages.push({ role: 'user', content: prompt, images: state.chatImages.map(({ name, type }) => ({ name, type })) });
+    const images = state.chatImages;
+    state.chatImages = [];
+    state.chatRunning = true;
+    state.chatController = new AbortController();
+    render();
+    scrollChat();
+    try {
+      const response = await fetch(`/api/chat/sessions/${session.id}/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: prompt, images }),
+        signal: state.chatController.signal,
+      });
+      if (!response.ok) {
+        const failure = await response.json();
+        throw new Error(failure.error || 'Chat request failed');
+      }
+      await readChatStream(response);
+    } catch (error) {
+      if (error.name !== 'AbortError') showChatError(error.message);
+    } finally {
+      state.chatRunning = false;
+      state.chatController = null;
+      await refreshChat(session.id);
+    }
+  };
+  document.querySelector('[data-chat-stop]')?.addEventListener('click', () => state.chatController?.abort());
+  document.querySelector('[data-chat-new]').onclick = async () => {
+    if (state.chatRunning) return;
+    const { session } = await api('/api/chat/sessions', { method: 'POST', body: '{}' });
+    state.chatSessions.unshift(session);
+    state.activeChat = session;
+    state.chatImages = [];
+    render();
+  };
+  document.querySelectorAll('[data-chat-session]').forEach((button) => {
+    button.onclick = async () => {
+      if (state.chatRunning) return;
+      await refreshChat(button.dataset.chatSession);
+    };
+  });
+  document.querySelectorAll('[data-chat-delete]').forEach((button) => {
+    button.onclick = async () => {
+      if (state.chatRunning) return;
+      await api(`/api/chat/sessions/${button.dataset.chatDelete}`, { method: 'DELETE' });
+      state.chatSessions = state.chatSessions.filter(({ id }) => id !== button.dataset.chatDelete);
+      if (state.activeChat?.id === button.dataset.chatDelete) state.activeChat = null;
+      render();
+    };
+  });
+  const picker = document.querySelector('[data-chat-images]');
+  document.querySelector('[data-chat-attach]').onclick = () => picker.click();
+  picker.onchange = async () => {
+    try {
+      const remaining = Math.max(0, 4 - state.chatImages.length);
+      const files = [...picker.files].slice(0, remaining);
+      state.chatImages.push(...(await Promise.all(files.map(imageFile))));
+      render();
+    } catch (error) {
+      showChatError(error.message);
+    }
+  };
+  document.querySelectorAll('[data-remove-image]').forEach((button) => {
+    button.onclick = () => {
+      state.chatImages.splice(Number(button.dataset.removeImage), 1);
+      render();
+    };
+  });
+  document.querySelector('[data-chat-mic]').onclick = startVoiceInput;
+}
+
+async function refreshChat(sessionId) {
+  const [{ sessions }, { session }] = await Promise.all([
+    api('/api/chat/sessions'),
+    api(`/api/chat/sessions/${sessionId}`),
+  ]);
+  state.chatSessions = sessions;
+  setActiveChat(session);
+  render();
+  scrollChat();
+}
+
+async function loadChatSession(sessionId) {
+  const { session } = await api(`/api/chat/sessions/${sessionId}`);
+  setActiveChat(session);
+  return session;
+}
+
+function setActiveChat(session) {
+  state.activeChat = session;
+  state.promptHistory = session.messages.filter(({ role }) => role === 'user').map(({ content }) => content);
+}
+
+async function readChatStream(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) if (line.trim()) applyChatEvent(JSON.parse(line));
+  }
+  if (buffer.trim()) applyChatEvent(JSON.parse(buffer));
+}
+
+function applyChatEvent(event) {
+  if (event.type === 'delta') {
+    let message = document.querySelector('[data-chat-streaming]');
+    if (!message) {
+      message = document.createElement('article');
+      message.className = 'chat-message assistant';
+      message.dataset.chatStreaming = '';
+      message.innerHTML = '<div class="chat-avatar">✦</div><div class="chat-bubble"></div>';
+      document.querySelector('[data-chat-live]').append(message);
+    }
+    message.querySelector('.chat-bubble').textContent += event.text;
+    scrollChat();
+  } else if (event.type === 'step') {
+    const details = document.querySelector('.chat-steps');
+    if (!details) return;
+    let list = details.querySelector('ol');
+    let item = list.querySelector(`[data-step-id="${CSS.escape(event.step.id)}"]`);
+    if (!item) {
+      item = document.createElement('li');
+      item.dataset.stepId = event.step.id;
+      item.append(document.createElement('span'), document.createElement('div'));
+      list.append(item);
+    }
+    item.className = event.step.status;
+    const detail = item.querySelector('div');
+    detail.replaceChildren(document.createTextNode(event.step.label));
+    if (event.step.error) {
+      const error = document.createElement('small');
+      error.textContent = event.step.error;
+      detail.append(error);
+    }
+  } else if (event.type === 'error') {
+    showChatError(event.error);
+  }
+}
+
+function showChatError(message) {
+  const target = document.querySelector('[data-chat-live]');
+  if (!target) return;
+  const error = document.createElement('div');
+  error.className = 'chat-error';
+  error.textContent = message;
+  target.append(error);
+  scrollChat();
+}
+
+function scrollChat() {
+  requestAnimationFrame(() => {
+    const scroll = document.querySelector('[data-chat-scroll]');
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  });
+}
+
+function imageFile(file) {
+  if (!file.type.startsWith('image/')) return Promise.reject(new Error('Only images can be attached'));
+  if (file.size > 6_000_000) return Promise.reject(new Error('Each image must be smaller than 6 MB'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, type: file.type, dataUrl: reader.result });
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function startVoiceInput() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) return showChatError('Voice input is not supported by this browser.');
+  const recognition = new Recognition();
+  recognition.interimResults = false;
+  recognition.onresult = (event) => {
+    const input = document.querySelector('[data-chat-form] textarea');
+    input.value = `${input.value}${input.value ? ' ' : ''}${event.results[0][0].transcript}`;
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+  };
+  recognition.onerror = () => showChatError('Voice input could not be started.');
+  recognition.start();
+}
+
 function requestList() {
   const rows = state.instances
     .map(
       (request) =>
-        `<button class="row detail-row" data-request-id="${request.id}"><span class="dot">${uiIcon('request')}</span><span><b>${esc(request.processName || request.processKey)}</b><small>${esc(request.businessKey || `Request #${request.id}`)}</small></span><label class="status">${esc(request.status)}</label><span class="workflow-list-arrow">→</span></button>`,
+        `<button class="row detail-row request-row" data-request-id="${request.id}"><span class="dot">${uiIcon('request')}</span><span class="request-name"><b>${esc(request.processName || request.processKey)}</b><small>${esc(request.businessKey || `Request #${request.id}`)}</small></span>${requestProgressGraphic(request.progress)}<label class="status">${esc(request.status)}</label><span class="workflow-list-arrow">→</span></button>`,
     )
     .join('');
   return `<section class="panel"><div class="panel-head"><div><h2>Workflow requests</h2><p class="muted">Select a request to view its details.</p></div><em>${state.instances.length}</em></div>${rows || '<div class="empty">Nothing to show yet.</div>'}</section>${requestDetailDrawer()}`;
@@ -422,6 +666,21 @@ router
     state.view = 'tasks';
     state.selectedTaskId = null;
     render();
+  })
+  .addRoute('/chat', () => {
+    state.view = 'chat';
+    if (!state.activeChat && state.chatSessions.length) {
+      render();
+      loadChatSession(state.chatSessions[0].id).then(() => {
+        if (state.view === 'chat') {
+          render();
+          scrollChat();
+        }
+      }).catch((error) => showChatError(error.message));
+      return;
+    }
+    render();
+    scrollChat();
   })
   .addRoute('/login', () => auth())
   .addRoute('*', () => router.navigate('/overview', { replace: true }));

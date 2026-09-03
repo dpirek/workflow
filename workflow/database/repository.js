@@ -189,7 +189,21 @@ export class WorkflowRepository {
     return this.db
       .prepare(
         `
-      SELECT i.*, d.process_key, d.name AS process_name, d.version
+      SELECT i.*, d.process_key, d.name AS process_name, d.version,
+        (
+          SELECT COUNT(*)
+          FROM process_node step
+          WHERE step.process_definition_id = i.process_definition_id
+            AND step.node_type NOT IN ('START', 'END')
+        ) AS definition_step_count,
+        (
+          SELECT COUNT(DISTINCT event.node_id)
+          FROM history_event event
+          JOIN process_node step ON step.id = event.node_id
+          WHERE event.process_instance_id = i.id
+            AND event.event_type = 'NODE_COMPLETED'
+            AND step.node_type NOT IN ('START', 'END')
+        ) AS completed_step_count
       FROM process_instance i JOIN process_definition d ON d.id = i.process_definition_id
       ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
       ORDER BY i.id DESC LIMIT ?

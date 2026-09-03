@@ -5,3 +5,4 @@ db/*.db-wal
 db/users.json
 .DS_Store
 *.log
+.env

@@ -19,6 +19,60 @@ CREATE TABLE app_migration (
     applied_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE chat_session (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    title           TEXT NOT NULL DEFAULT 'New chat',
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_message (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      TEXT NOT NULL,
+    user_id         TEXT NOT NULL,
+    role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content         TEXT NOT NULL,
+    images_json     TEXT NOT NULL DEFAULT '[]',
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(session_id) REFERENCES chat_session(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_run (
+    id                  TEXT PRIMARY KEY,
+    session_id          TEXT NOT NULL,
+    user_id             TEXT NOT NULL,
+    status              TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
+    step_summary_json   TEXT NOT NULL DEFAULT '[]',
+    input_tokens        INTEGER NOT NULL DEFAULT 0,
+    output_tokens       INTEGER NOT NULL DEFAULT 0,
+    error               TEXT,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at        DATETIME,
+    FOREIGN KEY(session_id) REFERENCES chat_session(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
+);
+
+CREATE TRIGGER chat_message_owner_guard
+    BEFORE INSERT ON chat_message
+    WHEN NOT EXISTS (
+        SELECT 1 FROM chat_session WHERE id = NEW.session_id AND user_id = NEW.user_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'chat message user must own session');
+    END;
+
+CREATE TRIGGER chat_run_owner_guard
+    BEFORE INSERT ON chat_run
+    WHEN NOT EXISTS (
+        SELECT 1 FROM chat_session WHERE id = NEW.session_id AND user_id = NEW.user_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'chat run user must own session');
+    END;
+
 -- ==========================================================
 -- PROCESS DEFINITIONS
 -- ==========================================================

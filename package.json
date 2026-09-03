@@ -11,7 +11,7 @@
     "start:mcp": "node workflow/index.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check workflow/database/database.js && node --check workflow/database/repository.js && node --check workflow/definitions/validator.js && node --check workflow/expression/evaluator.js && node --check workflow/engine/workflow-engine.js && node --check workflow/mcp/server.js && node --check workflow/mcp/tools.js"
+    "check": "node --check server.js && node --check workflow/chat/agent.js && node --check workflow/chat/config.js && node --check workflow/database/chat.js && node --check workflow/database/database.js && node --check workflow/database/repository.js && node --check workflow/definitions/validator.js && node --check workflow/expression/evaluator.js && node --check workflow/engine/workflow-engine.js && node --check workflow/mcp/server.js && node --check workflow/mcp/tools.js && node --check public/app/components/chat-page.js && node --check public/app/main.js"
   },
   "repository": {
     "type": "git",

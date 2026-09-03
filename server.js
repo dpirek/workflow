@@ -6,13 +6,20 @@ import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'node:crypt
 import { openDatabase } from './workflow/database/database.js';
 import { createUser, findUserByEmail, migrateLegacyUsers } from './workflow/database/users.js';
 import { WorkflowEngine } from './workflow/engine/workflow-engine.js';
+import { buildMcpServer } from './workflow/mcp/tools.js';
+import { WorkflowChatAgent } from './workflow/chat/agent.js';
+import { chatConfig, loadChatEnvironment } from './workflow/chat/config.js';
+import { createChatRepository } from './workflow/database/chat.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
+loadChatEnvironment(join(root, '.env'));
 const publicRoot = join(root, 'public');
 const usersPath = resolve(process.env.USERS_PATH || 'db/users.json');
 const database = openDatabase();
 migrateLegacyUsers(database, usersPath);
 const engine = new WorkflowEngine(database);
+const chatRepository = createChatRepository(database);
+const chatAgent = new WorkflowChatAgent({ config: chatConfig(), mcp: buildMcpServer(engine) });
 const sessions = new Map();
 const secret = process.env.AUTH_SECRET || 'change-this-secret-in-production';
 const json = (res, status, value, headers = {}) => {
@@ -44,6 +51,18 @@ function requireUser(req, res) {
 function safePath(urlPath) {
   const file = normalize(join(publicRoot, urlPath === '/' ? 'index.html' : urlPath));
   return file.startsWith(publicRoot) ? file : null;
+}
+function validateChatImages(images) {
+  if (images === undefined) return [];
+  if (!Array.isArray(images) || images.length > 4) throw new Error('Attach no more than four images');
+  return images.map((image) => {
+    const name = String(image?.name || 'image').slice(0, 160);
+    const type = String(image?.type || 'image/png').slice(0, 80);
+    const dataUrl = String(image?.dataUrl || '');
+    if (!dataUrl.startsWith('data:image/') || !dataUrl.includes(';base64,')) throw new Error('Invalid image attachment');
+    if (dataUrl.length > 8_000_000) throw new Error('Each image must be smaller than 6 MB');
+    return { name, type, dataUrl };
+  });
 }
 const types = {
   '.html': 'text/html; charset=utf-8',
@@ -115,7 +134,70 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true }, { 'set-cookie': 'workflow_session=; HttpOnly; Path=/; Max-Age=0' });
     }
     if (path.startsWith('/api/')) {
-      if (!requireUser(req, res)) return;
+      const user = requireUser(req, res);
+      if (!user) return;
+      if (path === '/api/chat/sessions' && req.method === 'GET')
+        return json(res, 200, { sessions: chatRepository.list(user.id) });
+      if (path === '/api/chat/sessions' && req.method === 'POST')
+        return json(res, 201, { session: chatRepository.create(user.id) });
+      const chatSession = path.match(/^\/api\/chat\/sessions\/([0-9a-f-]+)$/i);
+      if (chatSession && req.method === 'GET') {
+        const session = chatRepository.get(user.id, chatSession[1]);
+        return session ? json(res, 200, { session }) : json(res, 404, { error: 'Conversation not found' });
+      }
+      if (chatSession && req.method === 'DELETE') {
+        const removed = chatRepository.remove(user.id, chatSession[1]);
+        return removed ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Conversation not found' });
+      }
+      const chatMessage = path.match(/^\/api\/chat\/sessions\/([0-9a-f-]+)\/messages$/i);
+      if (chatMessage && req.method === 'POST') {
+        const input = await body(req);
+        const prompt = String(input.message || '').trim();
+        if (!prompt || prompt.length > 40_000) return json(res, 400, { error: 'A message is required' });
+        const images = validateChatImages(input.images);
+        const sessionId = chatMessage[1];
+        chatRepository.addMessage(user.id, sessionId, 'user', prompt, images);
+        const session = chatRepository.get(user.id, sessionId);
+        const runId = chatRepository.createRun(user.id, sessionId);
+        const controller = new AbortController();
+        const observedSteps = new Map();
+        res.on('close', () => {
+          if (!res.writableEnded) controller.abort();
+        });
+        res.writeHead(200, {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-cache, no-transform',
+          connection: 'keep-alive',
+        });
+        const emit = (event) => {
+          if (event.type === 'step' && event.step?.id) observedSteps.set(event.step.id, event.step);
+          if (!res.destroyed) res.write(`${JSON.stringify(event)}\n`);
+        };
+        emit({ type: 'run', runId, session: chatRepository.get(user.id, sessionId) });
+        try {
+          const result = await chatAgent.run({ messages: session.messages, images, signal: controller.signal, emit });
+          chatRepository.addMessage(user.id, sessionId, 'assistant', result.text);
+          chatRepository.finishRun(user.id, runId, {
+            status: 'completed', steps: result.steps, usage: result.usage,
+          });
+          emit({ type: 'done', message: result.text, usage: result.usage, steps: result.steps });
+        } catch (error) {
+          const cancelled = controller.signal.aborted;
+          const errorMessage = cancelled ? 'Run stopped' : error.message;
+          const failedSteps = [...observedSteps.values()];
+          if (!cancelled) {
+            const activeStep = [...failedSteps].reverse().find((step) => step.status === 'running');
+            if (activeStep) Object.assign(activeStep, { status: 'failed', error: errorMessage });
+            else failedSteps.push({ id: `run-${runId}`, label: 'Chat run', status: 'failed', error: errorMessage });
+            emit({ type: 'step', step: activeStep || failedSteps.at(-1) });
+          }
+          chatRepository.finishRun(user.id, runId, {
+            status: cancelled ? 'cancelled' : 'failed', steps: failedSteps, error: errorMessage,
+          });
+          emit({ type: cancelled ? 'cancelled' : 'error', error: errorMessage });
+        }
+        return res.end();
+      }
       if (path === '/api/workflows' && req.method === 'GET')
         return json(res, 200, { workflows: engine.listDefinitions().map((item) => engine.getDefinition(item.id)) });
       if (path === '/api/workflows' && req.method === 'POST')

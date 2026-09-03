@@ -140,17 +140,23 @@ export class WorkflowEngine {
   }
 
   listProcessInstances(query = {}) {
-    return this.repo.listInstances(query).map((row) => ({
-      id: row.id,
-      processDefinitionId: row.process_definition_id,
-      processKey: row.process_key,
-      processName: row.process_name,
-      version: row.version,
-      businessKey: row.business_key,
-      status: row.status,
-      startedAt: row.started_at,
-      endedAt: row.ended_at,
-    }));
+    return this.repo.listInstances(query).map((row) => {
+      const completed = Number(row.completed_step_count || 0);
+      const remaining =
+        row.status === 'RUNNING' ? Math.max(Number(row.definition_step_count || 0) - completed, 0) : 0;
+      return {
+        id: row.id,
+        processDefinitionId: row.process_definition_id,
+        processKey: row.process_key,
+        processName: row.process_name,
+        version: row.version,
+        businessKey: row.business_key,
+        status: row.status,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        progress: { completed, remaining, total: completed + remaining },
+      };
+    });
   }
 
   setVariables(instanceId, variables) {

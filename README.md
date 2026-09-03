@@ -13,6 +13,28 @@ npm start
 
 Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in the workflow SQLite database and sessions use HTTP-only cookies. Existing accounts in `db/users.json` are imported automatically. The dashboard exposes workflow definitions, requests, and human tasks through authenticated JSON APIs.
 
+The `/chat` page includes streamed model responses, persistent conversation history, image input,
+browser speech input, prompt history, stoppable runs, and persisted step summaries. Chat sessions,
+messages, and runs are stored in the same SQLite database and every query is scoped to the signed-in
+user. The chat agent has no filesystem, command, HTTP, skill, workspace, provider-management, or
+general-purpose tool access. Its only tool surface is the built-in workflow MCP registry, fixed to
+the server label `workflow`.
+
+Copy `.env.example` to `.env` and configure the model before using chat:
+
+```bash
+CHAT_LLM_MODEL=gpt-5.1
+CHAT_LLM_API_KEY=your-key
+CHAT_LLM_BASE_URL=https://api.openai.com/v1
+CHAT_SYSTEM_PROMPT="You are Flow, a workflow operations assistant. For every requested graphic, picture, image, diagram, chart, plot, graph, map, or other visual, return a self-contained SVG in a fenced svg code block."
+CHAT_MAX_TOOL_TURNS=12
+```
+
+`CHAT_LLM_BASE_URL` may point to any provider implementing the OpenAI-compatible Responses API.
+The API key is optional for local endpoints that do not require authentication. Configuration is
+environment-only and is not exposed or persisted in the UI. Existing shell variables take
+precedence over values loaded from `.env`.
+
 The workflow MCP endpoint remains available through the engine module at:
 
 - MCP: `http://127.0.0.1:8081/mcp` (when running `npm run start:mcp`)
