@@ -42,6 +42,7 @@ const esc = (s) =>
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
+const uiIcon = (name) => `<img src="/icons/${name}.svg" alt="" aria-hidden="true">`;
 
 function auth(mode = 'login', error = '') {
   app.innerHTML = `<main class="auth"><section><div class="brand">✦ <b>Flow</b></div><p class="eyebrow">WORKFLOW OPERATIONS</p><h1>${mode === 'login' ? 'Welcome back.' : 'Create your workspace.'}</h1><p class="muted">${mode === 'login' ? 'Sign in to manage your workflows.' : 'Build and run durable workflows.'}</p>${error ? `<div class="error">${esc(error)}</div>` : ''}<form id="form">${mode === 'register' ? '<label>Full name<input name="name" required></label>' : ''}<label>Email<input name="email" type="email" required></label><label>Password<input name="password" type="password" minlength="8" required></label><button class="primary">${mode === 'login' ? 'Sign in' : 'Create account'} <span>→</span></button></form><button class="link" id="switch">${mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</button></section></main>`;
@@ -227,7 +228,7 @@ function requestList() {
   const rows = state.instances
     .map(
       (request) =>
-        `<button class="row detail-row" data-request-id="${request.id}"><span class="dot">◇</span><span><b>${esc(request.processName || request.processKey)}</b><small>${esc(request.businessKey || `Request #${request.id}`)}</small></span><label class="status">${esc(request.status)}</label><span class="workflow-list-arrow">→</span></button>`,
+        `<button class="row detail-row" data-request-id="${request.id}"><span class="dot">${uiIcon('request')}</span><span><b>${esc(request.processName || request.processKey)}</b><small>${esc(request.businessKey || `Request #${request.id}`)}</small></span><label class="status">${esc(request.status)}</label><span class="workflow-list-arrow">→</span></button>`,
     )
     .join('');
   return `<section class="panel"><div class="panel-head"><div><h2>Workflow requests</h2><p class="muted">Select a request to view its details.</p></div><em>${state.instances.length}</em></div>${rows || '<div class="empty">Nothing to show yet.</div>'}</section>${requestDetailDrawer()}`;
@@ -237,7 +238,7 @@ function taskList() {
   const rows = state.tasks
     .map(
       (task) =>
-        `<button class="row detail-row" data-task-id="${task.id}"><span class="dot">◇</span><span><b>${esc(task.name)}</b><small>${esc(task.assignee || 'Unassigned')}</small></span><label class="status">${esc(task.status)}</label><span class="workflow-list-arrow">→</span></button>`,
+        `<button class="row detail-row" data-task-id="${task.id}"><span class="dot">${uiIcon('task')}</span><span><b>${esc(task.name)}</b><small>${esc(task.assignee || 'Unassigned')}</small></span><label class="status">${esc(task.status)}</label><span class="workflow-list-arrow">→</span></button>`,
     )
     .join('');
   return `<section class="panel"><div class="panel-head"><div><h2>Human tasks</h2><p class="muted">Select a task to view its details.</p></div><em>${state.tasks.length}</em></div>${rows || '<div class="empty">Nothing to show yet.</div>'}</section>${taskDetailDrawer()}`;
@@ -321,7 +322,7 @@ function workflowList() {
       const running = state.instances.filter(
         (instance) => instance.processKey === workflow.key && instance.status === 'RUNNING',
       ).length;
-      return `<button class="workflow-list-item" data-path="/workflows/${encodeURIComponent(workflow.id)}"><span class="workflow-list-icon">◇</span><span class="workflow-list-name"><b>${esc(workflow.name)}</b><small>${esc(workflow.key)} · version ${workflow.version}</small></span><span class="workflow-list-meta"><small>${workflow.nodes?.length || 0} nodes</small><small>${running} running</small></span><label class="status">${esc(workflow.status)}</label><span class="workflow-list-arrow">→</span></button>`;
+      return `<button class="workflow-list-item" data-path="/workflows/${encodeURIComponent(workflow.id)}"><span class="workflow-list-icon">${uiIcon('workflow')}</span><span class="workflow-list-name"><b>${esc(workflow.name)}</b><small>${esc(workflow.key)} · version ${workflow.version}</small></span><span class="workflow-list-meta"><small>${workflow.nodes?.length || 0} nodes</small><small>${running} running</small></span><label class="status">${esc(workflow.status)}</label><span class="workflow-list-arrow">→</span></button>`;
     })
     .join('')}</section>`;
 }
@@ -334,7 +335,7 @@ function workflowDetail() {
 
   const instances = state.instances.filter((instance) => instance.processKey === workflow.key);
   const running = instances.filter((instance) => instance.status === 'RUNNING').length;
-  return `<div class="workflow-detail-actions"><button class="back-link" data-path="/workflows">← All workflows</button><button class="edit-workflow-button" data-path="/workflows/${workflow.id}/edit">Edit workflow</button></div><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Select any item to view details.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>${nodeDetailDrawer(workflow)}`;
+  return `<div class="workflow-detail-actions"><button class="back-link" data-path="/workflows">← All workflows</button><button class="edit-workflow-button" data-path="/workflows/${workflow.id}/edit">Edit workflow</button></div><section class="workflow-detail-summary"><div><span class="workflow-list-icon">${uiIcon('workflow')}</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Select any item to view details.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>${nodeDetailDrawer(workflow)}`;
 }
 
 function nodeDetailDrawer(workflow) {
@@ -378,7 +379,7 @@ function nodeDetailDrawer(workflow) {
 }
 
 function panel(title, rows) {
-  return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2><p class="muted">Live data from SQLite.</p></div><em>${rows.length}</em></div>${rows.map((r) => `<div class="row"><span class="dot">◇</span><div><b>${esc(r[0])}</b><small>${esc(r[1])}</small></div><label class="status">${esc(r[2])}</label></div>`).join('') || '<div class="empty">Nothing to show yet.</div>'}</section>`;
+  return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2><p class="muted">Live data from SQLite.</p></div><em>${rows.length}</em></div>${rows.map((r) => `<div class="row"><span class="dot">${uiIcon('activity')}</span><div><b>${esc(r[0])}</b><small>${esc(r[1])}</small></div><label class="status">${esc(r[2])}</label></div>`).join('') || '<div class="empty">Nothing to show yet.</div>'}</section>`;
 }
 
 router

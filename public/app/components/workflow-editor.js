@@ -9,7 +9,7 @@ import {
 const NODE_TYPES = [
   ['START', 'Start', '○'],
   ['END', 'End', '◎'],
-  ['USER_TASK', 'User task', '◇'],
+  ['USER_TASK', 'User task', ''],
   ['SERVICE_TASK', 'Service task', '⚙'],
   ['SCRIPT_TASK', 'Script task', '</>'],
   ['EXCLUSIVE_GATEWAY', 'Decision', '×'],
@@ -162,7 +162,7 @@ export class WorkflowEditor {
         <label class="builder-description"><span>Description</span><input data-meta="description" value="${escapeHtml(this.draft.description)}" maxlength="240" placeholder="What does this workflow do?"></label>
       </div>
       <div class="builder-layout">
-        <aside class="builder-palette" aria-label="Workflow nodes"><div><h2>Nodes</h2><p>Click to add to the canvas.</p></div>${NODE_TYPES.map(([type, label, icon]) => `<button type="button" data-add-node="${type}"><i>${escapeHtml(icon)}</i><span>${label}</span></button>`).join('')}</aside>
+        <aside class="builder-palette" aria-label="Workflow nodes"><div><h2>Nodes</h2><p>Click to add to the canvas.</p></div>${NODE_TYPES.map(([type, label, icon]) => `<button type="button" data-add-node="${type}"><i>${type === 'USER_TASK' ? '<img src="/human-task.svg" alt="">' : escapeHtml(icon)}</i><span>${label}</span></button>`).join('')}</aside>
         <section class="builder-canvas-panel"><div class="canvas-toolbar"><span>${this.draft.nodes.length} nodes · ${this.draft.edges.length} connections</span><span data-layout-status>${this.connectingFrom ? 'Select another node to connect' : this.onLayoutSave ? 'Drag nodes to arrange · Autosave on' : 'Drag nodes to arrange'}</span></div><div class="builder-canvas" data-canvas>${this.svg()}</div></section>
         <aside class="builder-inspector">${this.inspector()}</aside>
       </div>
@@ -189,8 +189,11 @@ export class WorkflowEditor {
     }).join('');
     const nodes = this.draft.nodes.map((node, index) => {
       const selected = this.selected?.kind === 'node' && this.selected.index === index;
-      const icon = NODE_TYPES.find(([type]) => type === node.type)?.[2] || '◇';
-      return `<g class="editor-node${selected ? ' selected' : ''}${this.connectingFrom === node.key ? ' connecting' : ''}" data-node="${index}" transform="translate(${node.x} ${node.y})" role="button" tabindex="0"><rect x="${-WORKFLOW_NODE_WIDTH / 2}" y="${-WORKFLOW_NODE_HEIGHT / 2}" width="${WORKFLOW_NODE_WIDTH}" height="${WORKFLOW_NODE_HEIGHT}" rx="${node.type.includes('GATEWAY') ? 28 : 12}" fill="${COLORS[node.type]}"/><text class="editor-node-icon" y="-10">${escapeHtml(icon)}</text><text class="editor-node-label" y="14">${escapeHtml(node.name.slice(0, 20))}</text><text class="editor-node-type" y="29">${node.type.replaceAll('_', ' ')}</text><circle class="editor-port" data-port="${index}" cx="${WORKFLOW_NODE_WIDTH / 2}" cy="0" r="7"/></g>`;
+      const icon = NODE_TYPES.find(([type]) => type === node.type)?.[2] || '•';
+      const nodeIcon = node.type === 'USER_TASK'
+        ? '<image class="editor-node-avatar" href="/human-task.svg" x="-10" y="-30" width="20" height="20"/>'
+        : `<text class="editor-node-icon" y="-10">${escapeHtml(icon)}</text>`;
+      return `<g class="editor-node${selected ? ' selected' : ''}${this.connectingFrom === node.key ? ' connecting' : ''}" data-node="${index}" transform="translate(${node.x} ${node.y})" role="button" tabindex="0"><rect x="${-WORKFLOW_NODE_WIDTH / 2}" y="${-WORKFLOW_NODE_HEIGHT / 2}" width="${WORKFLOW_NODE_WIDTH}" height="${WORKFLOW_NODE_HEIGHT}" rx="${node.type.includes('GATEWAY') ? 28 : 12}" fill="${COLORS[node.type]}"/>${nodeIcon}<text class="editor-node-label" y="14">${escapeHtml(node.name.slice(0, 20))}</text><text class="editor-node-type" y="29">${node.type.replaceAll('_', ' ')}</text><circle class="editor-port" data-port="${index}" cx="${WORKFLOW_NODE_WIDTH / 2}" cy="0" r="7"/></g>`;
     }).join('');
     return `<svg class="workflow-editor-svg" viewBox="0 0 1000 600" aria-label="Workflow editor canvas"><defs><pattern id="editor-grid" width="${GRID_SIZE}" height="${GRID_SIZE}" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce5f2"/></pattern><marker id="editor-arrow" markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L10 5L0 10Z" fill="${WORKFLOW_EDGE_COLOR}"/></marker></defs><rect width="1000" height="600" fill="url(#editor-grid)"/>${edges}${nodes}</svg>`;
   }

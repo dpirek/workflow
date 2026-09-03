@@ -52,6 +52,8 @@ const ICON_PATHS = {
 };
 
 function nodeIcon(type, x, y) {
+  if (type === 'USER_TASK')
+    return `<image class="chart-node-icon" href="/human-task.svg" x="${x - 10}" y="${y - 10}" width="20" height="20"/>`;
   const paths = ICON_PATHS[type] || '<circle cx="0" cy="0" r="6"/><path d="M-3 0h6"/>';
   return `<g class="chart-node-icon" transform="translate(${x} ${y})" fill="none" stroke="${STROKES[type] || '#8795aa'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
 }
