@@ -28,6 +28,13 @@ CREATE TABLE chat_session (
     FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
 );
 
+CREATE TABLE chat_preference (
+    user_id         TEXT PRIMARY KEY,
+    model           TEXT NOT NULL,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
+);
+
 CREATE TABLE chat_message (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id      TEXT NOT NULL,
@@ -44,6 +51,8 @@ CREATE TABLE chat_run (
     id                  TEXT PRIMARY KEY,
     session_id          TEXT NOT NULL,
     user_id             TEXT NOT NULL,
+    user_message_id     INTEGER,
+    assistant_message_id INTEGER,
     status              TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
     step_summary_json   TEXT NOT NULL DEFAULT '[]',
     input_tokens        INTEGER NOT NULL DEFAULT 0,
@@ -52,7 +61,9 @@ CREATE TABLE chat_run (
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at        DATETIME,
     FOREIGN KEY(session_id) REFERENCES chat_session(id) ON DELETE CASCADE,
-    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_message_id) REFERENCES chat_message(id) ON DELETE SET NULL,
+    FOREIGN KEY(assistant_message_id) REFERENCES chat_message(id) ON DELETE SET NULL
 );
 
 CREATE TRIGGER chat_message_owner_guard

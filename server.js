@@ -137,9 +137,31 @@ const server = createServer(async (req, res) => {
       const user = requireUser(req, res);
       if (!user) return;
       if (path === '/api/chat/sessions' && req.method === 'GET')
-        return json(res, 200, { sessions: chatRepository.list(user.id) });
+        return json(res, 200, {
+          sessions: chatRepository.list(user.id),
+          model: chatRepository.getModel(user.id) || chatAgent.config.model,
+        });
       if (path === '/api/chat/sessions' && req.method === 'POST')
         return json(res, 201, { session: chatRepository.create(user.id) });
+      if (path === '/api/chat/models' && req.method === 'GET') {
+        const currentModel = chatRepository.getModel(user.id) || chatAgent.config.model;
+        let models = [];
+        let warning = null;
+        try {
+          models = await chatAgent.listModels();
+        } catch (error) {
+          warning = error.message;
+        }
+        return json(res, 200, {
+          currentModel,
+          models: [...new Set([currentModel, chatAgent.config.model, ...models].filter(Boolean))],
+          ...(warning ? { warning } : {}),
+        });
+      }
+      if (path === '/api/chat/model' && req.method === 'PATCH') {
+        const model = chatRepository.setModel(user.id, (await body(req)).model);
+        return json(res, 200, { model });
+      }
       const chatSession = path.match(/^\/api\/chat\/sessions\/([0-9a-f-]+)$/i);
       if (chatSession && req.method === 'GET') {
         const session = chatRepository.get(user.id, chatSession[1]);
@@ -156,9 +178,9 @@ const server = createServer(async (req, res) => {
         if (!prompt || prompt.length > 40_000) return json(res, 400, { error: 'A message is required' });
         const images = validateChatImages(input.images);
         const sessionId = chatMessage[1];
-        chatRepository.addMessage(user.id, sessionId, 'user', prompt, images);
+        const userMessageId = chatRepository.addMessage(user.id, sessionId, 'user', prompt, images);
         const session = chatRepository.get(user.id, sessionId);
-        const runId = chatRepository.createRun(user.id, sessionId);
+        const runId = chatRepository.createRun(user.id, sessionId, userMessageId);
         const controller = new AbortController();
         const observedSteps = new Map();
         res.on('close', () => {
@@ -175,20 +197,44 @@ const server = createServer(async (req, res) => {
         };
         emit({ type: 'run', runId, session: chatRepository.get(user.id, sessionId) });
         try {
-          const result = await chatAgent.run({ messages: session.messages, images, signal: controller.signal, emit });
-          chatRepository.addMessage(user.id, sessionId, 'assistant', result.text);
+          const result = await chatAgent.run({
+            messages: session.messages,
+            images,
+            model: chatRepository.getModel(user.id) || chatAgent.config.model,
+            signal: controller.signal,
+            emit,
+          });
+          const assistantMessageId = chatRepository.addMessage(user.id, sessionId, 'assistant', result.text);
           chatRepository.finishRun(user.id, runId, {
-            status: 'completed', steps: result.steps, usage: result.usage,
+            status: 'completed', steps: result.steps, usage: result.usage, assistantMessageId,
           });
           emit({ type: 'done', message: result.text, usage: result.usage, steps: result.steps });
         } catch (error) {
           const cancelled = controller.signal.aborted;
           const errorMessage = cancelled ? 'Run stopped' : error.message;
           const failedSteps = [...observedSteps.values()];
-          if (!cancelled) {
-            const activeStep = [...failedSteps].reverse().find((step) => step.status === 'running');
-            if (activeStep) Object.assign(activeStep, { status: 'failed', error: errorMessage });
-            else failedSteps.push({ id: `run-${runId}`, label: 'Chat run', status: 'failed', error: errorMessage });
+          const activeStep = [...failedSteps].reverse().find((step) => step.status === 'running');
+          if (cancelled && activeStep) {
+            Object.assign(activeStep, {
+              status: 'cancelled',
+              durationMs: activeStep.startedAt ? Date.now() - activeStep.startedAt : 0,
+              details: [...(activeStep.details || []), { title: 'Status', text: 'Stopped by user' }],
+            });
+            emit({ type: 'step', step: activeStep });
+          } else if (!cancelled) {
+            if (activeStep) Object.assign(activeStep, {
+              status: 'failed',
+              error: errorMessage,
+              durationMs: activeStep.startedAt ? Date.now() - activeStep.startedAt : 0,
+              details: [...(activeStep.details || []), { title: 'Error', text: errorMessage }],
+            });
+            else failedSteps.push({
+              id: `run-${runId}`,
+              label: 'Chat run',
+              status: 'failed',
+              error: errorMessage,
+              details: [{ title: 'Error', text: errorMessage }],
+            });
             emit({ type: 'step', step: activeStep || failedSteps.at(-1) });
           }
           chatRepository.finishRun(user.id, runId, {

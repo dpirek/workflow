@@ -14,7 +14,7 @@ npm start
 Open the web application at `http://127.0.0.1:8080/`. Accounts are stored in the workflow SQLite database and sessions use HTTP-only cookies. Existing accounts in `db/users.json` are imported automatically. The dashboard exposes workflow definitions, requests, and human tasks through authenticated JSON APIs.
 
 The `/chat` page includes streamed model responses, persistent conversation history, image input,
-browser speech input, prompt history, stoppable runs, and persisted step summaries. Chat sessions,
+prompt history, stoppable runs, and persisted step summaries. Chat sessions,
 messages, and runs are stored in the same SQLite database and every query is scoped to the signed-in
 user. The chat agent has no filesystem, command, HTTP, skill, workspace, provider-management, or
 general-purpose tool access. Its only tool surface is the built-in workflow MCP registry, fixed to

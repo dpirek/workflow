@@ -26,6 +26,20 @@ function toolErrorMessage(result) {
   return text || 'Workflow tool failed';
 }
 
+function detailText(value, limit = 30_000) {
+  let text;
+  if (typeof value === 'string') text = value;
+  else {
+    try {
+      text = JSON.stringify(value, (_key, item) =>
+        typeof item === 'string' && item.startsWith('data:image/') ? '[image data]' : item, 2);
+    } catch {
+      text = String(value ?? '');
+    }
+  }
+  return text.length > limit ? `${text.slice(0, limit)}\n… detail truncated …` : text;
+}
+
 async function readResponseEvents(response, onEvent) {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('The model response stream is unavailable');
@@ -86,11 +100,23 @@ export class WorkflowChatAgent {
     });
   }
 
-  async run({ messages, images = [], signal, emit = () => {} }) {
-    return this.runOpenAi({ messages, images, signal, emit });
+  async listModels() {
+    const headers = {};
+    if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
+    const response = await this.fetch(`${this.config.baseUrl}/models`, { headers });
+    if (!response.ok) throw new Error(`Could not load models (HTTP ${response.status})`);
+    const payload = await response.json();
+    return [...new Set((Array.isArray(payload.data) ? payload.data : [])
+      .map((item) => typeof item === 'string' ? item : item?.id)
+      .filter((id) => typeof id === 'string' && id.trim())
+      .map((id) => id.trim()))].sort((left, right) => left.localeCompare(right));
   }
 
-  async runOpenAi({ messages, images, signal, emit }) {
+  async run({ messages, images = [], model = this.config.model, signal, emit = () => {} }) {
+    return this.runOpenAi({ messages, images, model, signal, emit });
+  }
+
+  async runOpenAi({ messages, images, model, signal, emit }) {
     const tools = await this.tools();
     const toolDefinitions = tools.map((tool) => ({
       type: 'function',
@@ -103,11 +129,18 @@ export class WorkflowChatAgent {
     const usage = { input_tokens: 0, output_tokens: 0 };
     const steps = [];
     for (let turn = 1; turn <= this.config.maxToolTurns; turn += 1) {
-      emit({ type: 'step', step: { id: `model-${turn}`, label: `Model turn ${turn}`, status: 'running' } });
+      const modelStartedAt = Date.now();
+      emit({ type: 'step', step: {
+        id: `model-${turn}`,
+        label: `Model turn ${turn}`,
+        status: 'running',
+        startedAt: modelStartedAt,
+        details: [{ title: 'Model', text: model }, { title: 'Input', text: detailText(input) }],
+      } });
       const headers = { 'content-type': 'application/json' };
       if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
       const requestBody = {
-        model: this.config.model,
+        model,
         instructions: this.config.systemPrompt,
         input,
         tools: toolDefinitions,
@@ -131,7 +164,22 @@ export class WorkflowChatAgent {
       if (!completed) throw new Error('Model stream ended before completion');
       usage.input_tokens += Number(completed.usage?.input_tokens || 0);
       usage.output_tokens += Number(completed.usage?.output_tokens || 0);
-      const modelStep = { id: `model-${turn}`, label: `Model turn ${turn}`, status: 'completed' };
+      const modelStep = {
+        id: `model-${turn}`,
+        label: `Model turn ${turn}`,
+        status: 'completed',
+        startedAt: modelStartedAt,
+        durationMs: Date.now() - modelStartedAt,
+        usage: {
+          inputTokens: Number(completed.usage?.input_tokens || 0),
+          outputTokens: Number(completed.usage?.output_tokens || 0),
+        },
+        details: [
+          { title: 'Model', text: model },
+          { title: 'Input', text: detailText(input) },
+          { title: 'Response', text: detailText(completed.output || completed.output_text || '') },
+        ],
+      };
       steps.push(modelStep);
       emit({ type: 'step', step: modelStep });
       const calls = (completed.output || []).filter((item) => item.type === 'function_call');
@@ -146,13 +194,27 @@ export class WorkflowChatAgent {
       input = [...input, ...(completed.output || [])];
       for (const call of calls) {
         const label = `workflow.${call.name}`;
-        emit({ type: 'step', step: { id: call.call_id, label, status: 'running' } });
-        const result = await this.callTool(call.name, safeArguments(call.arguments));
+        const args = safeArguments(call.arguments);
+        const toolStartedAt = Date.now();
+        emit({ type: 'step', step: {
+          id: call.call_id,
+          label,
+          status: 'running',
+          startedAt: toolStartedAt,
+          details: [{ title: 'Arguments', text: detailText(args) }],
+        } });
+        const result = await this.callTool(call.name, args);
         const failed = result?.isError === true;
         const toolStep = {
           id: call.call_id,
           label,
           status: failed ? 'failed' : 'completed',
+          startedAt: toolStartedAt,
+          durationMs: Date.now() - toolStartedAt,
+          details: [
+            { title: 'Arguments', text: detailText(args) },
+            { title: 'Response', text: detailText(result) },
+          ],
           ...(failed ? { error: toolErrorMessage(result) } : {}),
         };
         steps.push(toolStep);

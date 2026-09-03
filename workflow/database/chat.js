@@ -29,31 +29,46 @@ export function createChatRepository(db) {
     WHERE session_id = ? AND user_id = ?
     ORDER BY id
   `);
-  const latestRun = db.prepare(`
-    SELECT id, status, step_summary_json AS stepSummaryJson,
+  const runs = db.prepare(`
+    SELECT id, user_message_id AS userMessageId, assistant_message_id AS assistantMessageId,
+      status, step_summary_json AS stepSummaryJson,
       input_tokens AS inputTokens, output_tokens AS outputTokens,
       error, created_at AS createdAt, completed_at AS completedAt
     FROM chat_run
     WHERE session_id = ? AND user_id = ?
-    ORDER BY created_at DESC LIMIT 1
+    ORDER BY created_at, id
   `);
 
   const hydrate = (session, userId) => {
     if (!session) return null;
-    const run = latestRun.get(session.id, userId);
+    const sessionRuns = runs.all(session.id, userId).map(({ stepSummaryJson, ...run }) => ({
+      ...run,
+      stepSummary: parseImages(stepSummaryJson),
+    }));
     return {
       ...session,
       messages: messages.all(session.id, userId).map(({ imagesJson, ...message }) => ({
         ...message,
         images: parseImages(imagesJson),
       })),
-      latestRun: run
-        ? { ...run, stepSummary: parseImages(run.stepSummaryJson), stepSummaryJson: undefined }
-        : null,
+      runs: sessionRuns,
+      latestRun: sessionRuns.at(-1) || null,
     };
   };
 
   return {
+    getModel(userId) {
+      return db.prepare('SELECT model FROM chat_preference WHERE user_id = ?').get(userId)?.model || null;
+    },
+    setModel(userId, model) {
+      const value = String(model || '').trim();
+      if (!value || value.length > 200) throw new Error('Select a valid model');
+      db.prepare(`
+        INSERT INTO chat_preference (user_id, model) VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET model = excluded.model, updated_at = CURRENT_TIMESTAMP
+      `).run(userId, value);
+      return value;
+    },
     list(userId) {
       return list.all(userId);
     },
@@ -85,17 +100,17 @@ export function createChatRepository(db) {
       }
       return result.lastInsertRowid;
     },
-    createRun(userId, sessionId) {
+    createRun(userId, sessionId, userMessageId = null) {
       if (!ownedSession.get(sessionId, userId)) throw new Error('Conversation not found');
       const id = randomUUID();
-      db.prepare('INSERT INTO chat_run (id, session_id, user_id, status) VALUES (?, ?, ?, ?)')
-        .run(id, sessionId, userId, 'running');
+      db.prepare('INSERT INTO chat_run (id, session_id, user_id, user_message_id, status) VALUES (?, ?, ?, ?, ?)')
+        .run(id, sessionId, userId, userMessageId, 'running');
       return id;
     },
-    finishRun(userId, runId, { status, steps, usage = {}, error = null }) {
+    finishRun(userId, runId, { status, steps, usage = {}, error = null, assistantMessageId = null }) {
       db.prepare(`
         UPDATE chat_run SET status = ?, step_summary_json = ?, input_tokens = ?, output_tokens = ?,
-          error = ?, completed_at = CURRENT_TIMESTAMP
+          error = ?, assistant_message_id = ?, completed_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ?
       `).run(
         status,
@@ -103,6 +118,7 @@ export function createChatRepository(db) {
         Number(usage.input_tokens || usage.prompt_tokens || 0),
         Number(usage.output_tokens || usage.completion_tokens || 0),
         error,
+        assistantMessageId,
         runId,
         userId,
       );

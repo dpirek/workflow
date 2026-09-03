@@ -1,5 +1,5 @@
 import Router from './router.js';
-import { chatPage } from './components/chat-page.js';
+import { chatPage, stepProgressGraphic } from './components/chat-page.js';
 import { requestProgressGraphic } from './components/request-progress.js';
 import { mountWorkflowCharts } from './components/workflow-chart.js';
 import { WorkflowEditor } from './components/workflow-editor.js';
@@ -24,6 +24,9 @@ let state = {
   chatRunning: false,
   chatImages: [],
   chatController: null,
+  chatModel: '',
+  chatModels: [],
+  chatModelsLoaded: false,
   promptHistory: [],
 };
 let workflowCharts = [];
@@ -64,8 +67,7 @@ function auth(mode = 'login', error = '') {
           body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
         })
       ).user;
-      router.navigate('/overview', { replace: true });
-      await load();
+      await router.navigate('/overview', { replace: true });
     } catch (x) {
       auth(mode, x.message);
     }
@@ -73,6 +75,11 @@ function auth(mode = 'login', error = '') {
 }
 
 async function load() {
+  await refreshApplicationData(window.location.pathname);
+  await router.render(window.location.pathname, { skipRefresh: true });
+}
+
+async function refreshApplicationData(targetPath = window.location.pathname) {
   const [w, i, t, j, n, c] = await Promise.all([
     api('/api/workflows'),
     api('/api/instances'),
@@ -88,13 +95,18 @@ async function load() {
     jobs: j.jobs,
     incidents: n.incidents,
     chatSessions: c.sessions,
+    chatModel: c.model || '',
   });
   if (state.activeChat && !c.sessions.some((session) => session.id === state.activeChat.id)) state.activeChat = null;
-  if (window.location.pathname === '/chat' && !state.activeChat && state.chatSessions.length) {
+  if (targetPath.split('?')[0] === '/chat' && !state.activeChat && state.chatSessions.length) {
     await loadChatSession(state.chatSessions[0].id);
   }
-  router.render();
 }
+
+router.setBeforeRender(async (path) => {
+  if (!state.user || path.split('?')[0] === '/login') return;
+  await refreshApplicationData(path);
+});
 
 function render() {
   workflowCharts.forEach((chart) => chart.destroy());
@@ -126,7 +138,11 @@ function render() {
   document.querySelector('.sidebar-brand').onclick = () => {
     if (state.sidebarCollapsed) setSidebarCollapsed(false);
   };
-  document.querySelectorAll('[data-path]').forEach((b) => (b.onclick = () => router.navigate(b.dataset.path)));
+  document.querySelectorAll('[data-path]').forEach((b) => {
+    b.onclick = () => router.navigate(b.dataset.path).catch((error) => {
+      console.error(error);
+    });
+  });
   document.querySelector('#refresh')?.addEventListener('click', load);
   document.querySelector('#logout').onclick = async () => {
     await api('/api/auth/logout', { method: 'POST' });
@@ -229,6 +245,8 @@ function page() {
     activeSession: state.activeChat,
     running: state.chatRunning,
     draftImages: state.chatImages,
+    model: state.chatModel,
+    models: state.chatModels,
   });
   if (state.view === 'workflows') return workflowList();
   if (state.view === 'workflow-new') return '<div data-workflow-editor></div>';
@@ -349,7 +367,38 @@ function bindChat() {
       render();
     };
   });
-  document.querySelector('[data-chat-mic]').onclick = startVoiceInput;
+  const modelPicker = document.querySelector('[data-chat-model-picker]');
+  if (!state.chatModelsLoaded) {
+    modelPicker.querySelector('summary').onclick = async (event) => {
+      event.preventDefault();
+      try {
+        await loadChatModels();
+        if (state.view !== 'chat') return;
+        render();
+        document.querySelector('[data-chat-model-picker]').open = true;
+      } catch (error) {
+        showChatError(error.message);
+      }
+    };
+  }
+  document.querySelectorAll('[data-chat-model]').forEach((button) => {
+    button.onclick = async () => {
+      if (state.chatRunning || !button.dataset.chatModel) return;
+      const { model } = await api('/api/chat/model', {
+        method: 'PATCH',
+        body: JSON.stringify({ model: button.dataset.chatModel }),
+      });
+      state.chatModel = model;
+      render();
+    };
+  });
+}
+
+async function loadChatModels() {
+  const result = await api('/api/chat/models');
+  state.chatModel = result.currentModel;
+  state.chatModels = result.models;
+  state.chatModelsLoaded = true;
 }
 
 async function refreshChat(sessionId) {
@@ -396,33 +445,80 @@ function applyChatEvent(event) {
       message = document.createElement('article');
       message.className = 'chat-message assistant';
       message.dataset.chatStreaming = '';
-      message.innerHTML = '<div class="chat-avatar">✦</div><div class="chat-bubble"></div>';
+      message.innerHTML = '<div class="chat-bubble"></div>';
       document.querySelector('[data-chat-live]').append(message);
     }
     message.querySelector('.chat-bubble').textContent += event.text;
     scrollChat();
   } else if (event.type === 'step') {
-    const details = document.querySelector('.chat-steps');
-    if (!details) return;
-    let list = details.querySelector('ol');
+    const run = document.querySelector('[data-live-run]');
+    if (!run) return;
+    const list = run.querySelector('ol');
     let item = list.querySelector(`[data-step-id="${CSS.escape(event.step.id)}"]`);
     if (!item) {
       item = document.createElement('li');
+      item.className = 'chat-step';
       item.dataset.stepId = event.step.id;
-      item.append(document.createElement('span'), document.createElement('div'));
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const marker = document.createElement('span');
+      marker.className = 'chat-step-marker';
+      const copy = document.createElement('span');
+      copy.className = 'chat-step-copy';
+      copy.append(document.createElement('strong'), document.createElement('small'));
+      const duration = document.createElement('time');
+      const chevron = document.createElement('span');
+      chevron.className = 'chat-step-chevron';
+      chevron.textContent = '›';
+      summary.append(marker, copy, duration, chevron);
+      const content = document.createElement('div');
+      content.className = 'chat-step-details';
+      details.append(summary, content);
+      item.append(details);
       list.append(item);
     }
-    item.className = event.step.status;
-    const detail = item.querySelector('div');
-    detail.replaceChildren(document.createTextNode(event.step.label));
-    if (event.step.error) {
-      const error = document.createElement('small');
-      error.textContent = event.step.error;
-      detail.append(error);
+    item.className = `chat-step ${event.step.status}`;
+    item.querySelector('.chat-step-copy strong').textContent = event.step.label;
+    const usage = event.step.usage;
+    item.querySelector('.chat-step-copy small').textContent = usage
+      ? `${Number(usage.inputTokens || 0).toLocaleString()} input · ${Number(usage.outputTokens || 0).toLocaleString()} output`
+      : '';
+    item.querySelector('time').textContent = formatChatStepDuration(event.step.durationMs);
+    const sections = [...(event.step.details || [])];
+    if (event.step.error && !sections.some(({ title }) => title === 'Error')) {
+      sections.push({ title: 'Error', text: event.step.error });
     }
+    if (!sections.length) sections.push({ title: 'Status', text: event.step.status });
+    const content = item.querySelector('.chat-step-details');
+    content.replaceChildren(...sections.map((section) => {
+      const article = document.createElement('section');
+      const heading = document.createElement('h4');
+      const text = document.createElement('pre');
+      heading.textContent = section.title || 'Details';
+      text.textContent = section.text || '';
+      article.append(heading, text);
+      return article;
+    }));
+    if (event.step.status === 'failed') item.querySelector('details').open = true;
+    const count = list.children.length;
+    run.querySelector('.chat-run-count').textContent = `${count} step${count === 1 ? '' : 's'}`;
+    run.querySelector('.chat-run-copy strong').textContent = event.step.status === 'running' ? event.step.label : 'Flow is working…';
+    const progress = run.querySelector('[data-step-progress]');
+    const progressSteps = [...list.querySelectorAll('.chat-step')].map((step) => ({
+      status: step.classList.contains('failed') ? 'failed'
+        : step.classList.contains('completed') ? 'completed'
+          : step.classList.contains('cancelled') ? 'cancelled' : 'running',
+    }));
+    progress.outerHTML = stepProgressGraphic(progressSteps, 'running');
   } else if (event.type === 'error') {
     showChatError(event.error);
   }
+}
+
+function formatChatStepDuration(value) {
+  const milliseconds = Math.max(0, Number(value) || 0);
+  if (milliseconds < 1000) return milliseconds ? `${Math.round(milliseconds)}ms` : '';
+  return milliseconds < 10_000 ? `${(milliseconds / 1000).toFixed(1)}s` : `${Math.round(milliseconds / 1000)}s`;
 }
 
 function showChatError(message) {
@@ -451,21 +547,6 @@ function imageFile(file) {
     reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
     reader.readAsDataURL(file);
   });
-}
-
-function startVoiceInput() {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) return showChatError('Voice input is not supported by this browser.');
-  const recognition = new Recognition();
-  recognition.interimResults = false;
-  recognition.onresult = (event) => {
-    const input = document.querySelector('[data-chat-form] textarea');
-    input.value = `${input.value}${input.value ? ' ' : ''}${event.results[0][0].transcript}`;
-    input.dispatchEvent(new Event('input'));
-    input.focus();
-  };
-  recognition.onerror = () => showChatError('Voice input could not be started.');
-  recognition.start();
 }
 
 function requestList() {

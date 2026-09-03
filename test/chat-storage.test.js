@@ -14,8 +14,8 @@ test('chat sessions, messages, and run summaries are isolated by user', () => {
   createUser(db, user('user-b', 'b@example.com'));
   const chats = createChatRepository(db);
   const session = chats.create('user-a');
-  chats.addMessage('user-a', session.id, 'user', 'List my workflows');
-  const runId = chats.createRun('user-a', session.id);
+  const userMessageId = chats.addMessage('user-a', session.id, 'user', 'List my workflows');
+  const runId = chats.createRun('user-a', session.id, userMessageId);
   chats.finishRun('user-a', runId, {
     status: 'completed',
     steps: [{ id: 'one', label: 'workflow.list_workflows', status: 'completed' }],
@@ -23,6 +23,9 @@ test('chat sessions, messages, and run summaries are isolated by user', () => {
   });
 
   assert.equal(chats.list('user-b').length, 0);
+  chats.setModel('user-a', 'provider/model-a');
+  assert.equal(chats.getModel('user-a'), 'provider/model-a');
+  assert.equal(chats.getModel('user-b'), null);
   assert.equal(chats.get('user-b', session.id), null);
   assert.throws(() => chats.addMessage('user-b', session.id, 'user', 'Unauthorized'), /not found/);
   assert.equal(chats.remove('user-b', session.id), false);
@@ -32,6 +35,8 @@ test('chat sessions, messages, and run summaries are isolated by user', () => {
   const loaded = chats.get('user-a', session.id);
   assert.equal(loaded.messages[0].content, 'List my workflows');
   assert.equal(loaded.latestRun.stepSummary[0].label, 'workflow.list_workflows');
+  assert.equal(loaded.runs.length, 1);
+  assert.equal(loaded.runs[0].userMessageId, userMessageId);
   assert.equal(loaded.latestRun.inputTokens, 11);
   db.close();
 });

@@ -38,6 +38,11 @@ export function openDatabase(path = process.env.WORKFLOW_DB_PATH || resolve('db/
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS chat_preference (
+      user_id TEXT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+      model TEXT NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS chat_message (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
@@ -51,6 +56,8 @@ export function openDatabase(path = process.env.WORKFLOW_DB_PATH || resolve('db/
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+      user_message_id INTEGER REFERENCES chat_message(id) ON DELETE SET NULL,
+      assistant_message_id INTEGER REFERENCES chat_message(id) ON DELETE SET NULL,
       status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
       step_summary_json TEXT NOT NULL DEFAULT '[]',
       input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -88,6 +95,9 @@ export function openDatabase(path = process.env.WORKFLOW_DB_PATH || resolve('db/
         SELECT RAISE(ABORT, 'chat run user must own session');
       END;
   `);
+  const chatRunColumns = new Set(db.prepare("SELECT name FROM pragma_table_info('chat_run')").all().map(({ name }) => name));
+  if (!chatRunColumns.has('user_message_id')) db.exec('ALTER TABLE chat_run ADD COLUMN user_message_id INTEGER');
+  if (!chatRunColumns.has('assistant_message_id')) db.exec('ALTER TABLE chat_run ADD COLUMN assistant_message_id INTEGER');
   return db;
 }
 

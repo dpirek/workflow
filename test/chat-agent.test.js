@@ -47,11 +47,13 @@ test('chat agent streams text and calls only the fixed workflow tool registry', 
   });
   const result = await agent.run({
     messages: [{ role: 'user', content: 'List workflows' }],
+    model: 'selected-model',
     emit: (event) => events.push(event),
   });
 
   assert.equal(result.text, 'No workflows yet.');
   assert.deepEqual(calls, [{ name: 'list_workflows', arguments: {} }]);
+  assert.equal(requests[0].model, 'selected-model');
   assert.equal(Object.hasOwn(requests[1], 'previous_response_id'), false);
   assert.ok(requests[1].input.some((item) => item.type === 'function_call' && item.call_id === 'call-1'));
   assert.ok(requests[1].input.some((item) => item.type === 'function_call_output' && item.call_id === 'call-1'));
@@ -59,6 +61,8 @@ test('chat agent streams text and calls only the fixed workflow tool registry', 
   assert.equal(result.usage.output_tokens, 7);
   assert.ok(events.some((event) => event.type === 'delta' && event.text === 'No workflows yet.'));
   assert.ok(result.steps.some((step) => step.label === 'workflow.list_workflows'));
+  assert.ok(result.steps.find((step) => step.label === 'workflow.list_workflows').details.some(({ title }) => title === 'Response'));
+  assert.ok(result.steps.find((step) => step.label === 'Model turn 1').details.some(({ title }) => title === 'Input'));
 });
 
 test('failed workflow tools include their error in the step summary', async () => {
@@ -92,4 +96,22 @@ test('failed workflow tools include their error in the step summary', async () =
   const failed = result.steps.find((step) => step.id === 'failed-call');
   assert.equal(failed.status, 'failed');
   assert.equal(failed.error, 'Workflow 404 was not found');
+});
+
+test('loads model identifiers from an OpenAI-compatible models endpoint', async () => {
+  const requests = [];
+  const agent = new WorkflowChatAgent({
+    config: { model: 'default', apiKey: 'secret', baseUrl: 'https://provider.test/v1' },
+    mcp: {},
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(JSON.stringify({ data: [{ id: 'model-b' }, { id: 'model-a' }, { id: 'model-a' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  assert.deepEqual(await agent.listModels(), ['model-a', 'model-b']);
+  assert.equal(requests[0].url, 'https://provider.test/v1/models');
+  assert.equal(requests[0].options.headers.authorization, 'Bearer secret');
 });

@@ -1,7 +1,14 @@
 export default class Router {
   constructor() {
     this.routes = [];
-    window.addEventListener('popstate', () => this.render());
+    this.beforeRender = null;
+    window.addEventListener('popstate', () => this.render().catch((error) => {
+      window.dispatchEvent(new CustomEvent('router-error', { detail: error }));
+    }));
+  }
+  setBeforeRender(handler) {
+    this.beforeRender = handler;
+    return this;
   }
   addRoute(path, handler) {
     this.routes.push({ path, handler });
@@ -29,12 +36,13 @@ export default class Router {
   }
   navigate(path, options = {}) {
     window.history[options.replace ? 'replaceState' : 'pushState']({}, '', path);
-    return this.render(path);
+    return this.render(path, options);
   }
-  render(path = window.location.pathname) {
+  async render(path = window.location.pathname, options = {}) {
+    if (!options.skipRefresh && this.beforeRender) await this.beforeRender(path);
     const match = this.match(path);
     if (!match) return false;
-    match.route.handler({ params: match.params, query: new URLSearchParams(path.split('?')[1] || '') });
+    await match.route.handler({ params: match.params, query: new URLSearchParams(path.split('?')[1] || '') });
     return true;
   }
 }
