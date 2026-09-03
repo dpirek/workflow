@@ -1,10 +1,12 @@
 import Router from './router.js';
 import { mountWorkflowCharts } from './components/workflow-chart.js';
+import { WorkflowEditor } from './components/workflow-editor.js';
 
 const app = document.querySelector('#app'),
   router = new Router();
 let state = {
   user: null,
+  sidebarCollapsed: localStorage.getItem('flow.sidebar.collapsed') === 'true',
   view: 'overview',
   workflowId: null,
   selectedNodeKey: null,
@@ -17,6 +19,7 @@ let state = {
   incidents: [],
 };
 let workflowCharts = [];
+let workflowEditor = null;
 document.addEventListener('keydown', (event) => {
   if (
     event.key !== 'Escape' ||
@@ -81,15 +84,33 @@ async function load() {
 function render() {
   workflowCharts.forEach((chart) => chart.destroy());
   workflowCharts = [];
+  workflowEditor?.destroy();
+  workflowEditor = null;
   const menu = [
     ['overview', 'Overview'],
     ['workflows', 'Workflows'],
     ['requests', 'Requests'],
     ['tasks', 'Tasks'],
   ];
-  app.innerHTML = `<div class="shell"><aside><div class="brand">✦<b>Flow</b></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && state.view === 'workflow-detail') ? 'active' : ''}" data-path="/${id}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout">↗</button></div></aside><main class="content"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div><button id="refresh" class="refresh" aria-label="Refresh">↻</button></header>${page()}</main></div>`;
+  const isEditor = ['workflow-new', 'workflow-edit'].includes(state.view);
+  app.innerHTML = `<div class="shell${state.sidebarCollapsed ? ' sidebar-collapsed' : ''}"><aside><div class="sidebar-head"><button class="brand sidebar-brand" type="button" aria-label="Flow${state.sidebarCollapsed ? ' — expand navigation' : ''}" title="${state.sidebarCollapsed ? 'Expand navigation' : 'Flow'}"><span class="brand-mark">✦</span><b>Flow</b></button><button class="sidebar-toggle" type="button" aria-expanded="${!state.sidebarCollapsed}" aria-label="Collapse navigation" title="Collapse navigation"><img src="/sidebar-toggle.svg" alt=""></button></div><p class="eyebrow">OPERATIONS</p><nav>${menu.map(([id, label]) => `<button class="nav ${state.view === id || (id === 'workflows' && ['workflow-detail', 'workflow-new', 'workflow-edit'].includes(state.view)) ? 'active' : ''}" data-path="/${id}" aria-label="${label}" title="${label}">${label}</button>`).join('')}</nav><div class="profile"><i>${esc(state.user.name[0])}</i><span><b>${esc(state.user.name)}</b><small>${esc(state.user.email)}</small></span><button id="logout" aria-label="Sign out" title="Sign out">↗</button></div></aside><main class="content${isEditor ? ' editor-content' : ''}"><header><div><p class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${pageTitle()}</h1></div>${isEditor ? '' : '<button id="refresh" class="refresh" aria-label="Refresh">↻</button>'}</header>${page()}</main></div>`;
+  const setSidebarCollapsed = (collapsed) => {
+    state.sidebarCollapsed = collapsed;
+    localStorage.setItem('flow.sidebar.collapsed', String(state.sidebarCollapsed));
+    const shell = document.querySelector('.shell');
+    const toggle = document.querySelector('.sidebar-toggle');
+    const brand = document.querySelector('.sidebar-brand');
+    shell.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+    toggle.setAttribute('aria-expanded', String(!state.sidebarCollapsed));
+    brand.setAttribute('aria-label', `Flow${state.sidebarCollapsed ? ' — expand navigation' : ''}`);
+    brand.title = state.sidebarCollapsed ? 'Expand navigation' : 'Flow';
+  };
+  document.querySelector('.sidebar-toggle').onclick = () => setSidebarCollapsed(true);
+  document.querySelector('.sidebar-brand').onclick = () => {
+    if (state.sidebarCollapsed) setSidebarCollapsed(false);
+  };
   document.querySelectorAll('[data-path]').forEach((b) => (b.onclick = () => router.navigate(b.dataset.path)));
-  document.querySelector('#refresh').onclick = load;
+  document.querySelector('#refresh')?.addEventListener('click', load);
   document.querySelector('#logout').onclick = async () => {
     await api('/api/auth/logout', { method: 'POST' });
     state.user = null;
@@ -149,10 +170,40 @@ function render() {
       },
     });
   }
+  if (isEditor) {
+    const existing = state.view === 'workflow-edit'
+      ? state.workflows.find((item) => String(item.id) === state.workflowId)
+      : null;
+    if (state.view === 'workflow-edit' && !existing) return;
+    workflowEditor = new WorkflowEditor(document.querySelector('[data-workflow-editor]'), {
+      mode: existing ? 'edit' : 'create',
+      draft: existing,
+      baseVersion: existing?.version,
+      lockKey: Boolean(existing),
+      onBack() {
+        router.navigate(existing ? `/workflows/${existing.id}` : '/workflows');
+      },
+      async onDeploy(definition) {
+        const { workflow } = await api('/api/workflows', {
+          method: 'POST',
+          body: JSON.stringify({ definition }),
+        });
+        await load();
+        router.navigate(`/workflows/${workflow.id}`);
+      },
+    });
+  }
 }
 
 function page() {
   if (state.view === 'workflows') return workflowList();
+  if (state.view === 'workflow-new') return '<div data-workflow-editor></div>';
+  if (state.view === 'workflow-edit') {
+    const workflow = state.workflows.find((item) => String(item.id) === state.workflowId);
+    return workflow
+      ? '<div data-workflow-editor></div>'
+      : '<section class="panel workflow-not-found"><h2>Workflow not found</h2><p class="muted">This definition may have been removed.</p><button class="secondary" data-path="/workflows">← Back to workflows</button></section>';
+  }
   if (state.view === 'workflow-detail') return workflowDetail();
   if (state.view === 'requests') return requestList();
   if (state.view === 'tasks') return taskList();
@@ -247,13 +298,15 @@ function formatDate(value) {
 }
 
 function pageTitle() {
+  if (state.view === 'workflow-new') return 'Create workflow';
+  if (state.view === 'workflow-edit') return 'Edit workflow';
   if (state.view !== 'workflow-detail') return state.view[0].toUpperCase() + state.view.slice(1);
   return esc(state.workflows.find((workflow) => String(workflow.id) === state.workflowId)?.name || 'Workflow');
 }
 
 function workflowList() {
-  if (!state.workflows.length) return '<section class="panel empty">No workflows deployed yet.</section>';
-  return `<section class="panel workflow-list"><div class="panel-head"><div><h2>Workflow definitions</h2><p class="muted">Select a workflow to inspect its definition.</p></div><em>${state.workflows.length}</em></div>${state.workflows
+  if (!state.workflows.length) return '<section class="panel empty workflow-empty"><p>No workflows deployed yet.</p><button class="deploy-button" data-path="/workflows/new">Create workflow</button></section>';
+  return `<section class="workflow-list-actions"><p class="muted">Build and deploy durable process definitions.</p><button class="deploy-button" data-path="/workflows/new">+ New workflow</button></section><section class="panel workflow-list"><div class="panel-head"><div><h2>Workflow definitions</h2><p class="muted">Select a workflow to inspect its definition.</p></div><em>${state.workflows.length}</em></div>${state.workflows
     .map((workflow) => {
       const running = state.instances.filter(
         (instance) => instance.processKey === workflow.key && instance.status === 'RUNNING',
@@ -271,7 +324,7 @@ function workflowDetail() {
 
   const instances = state.instances.filter((instance) => instance.processKey === workflow.key);
   const running = instances.filter((instance) => instance.status === 'RUNNING').length;
-  return `<button class="back-link" data-path="/workflows">← All workflows</button><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Select any item to view details.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>${nodeDetailDrawer(workflow)}`;
+  return `<div class="workflow-detail-actions"><button class="back-link" data-path="/workflows">← All workflows</button><button class="edit-workflow-button" data-path="/workflows/${workflow.id}/edit">Edit workflow</button></div><section class="workflow-detail-summary"><div><span class="workflow-list-icon">◇</span><div><p class="eyebrow">${esc(workflow.key)}</p><h2>${esc(workflow.name)}</h2><p class="muted">Version ${workflow.version}</p></div></div><label class="status">${esc(workflow.status)}</label></section><section class="workflow-detail-stats"><div><small>NODES</small><strong>${workflow.nodes?.length || 0}</strong></div><div><small>CONNECTIONS</small><strong>${workflow.edges?.length || 0}</strong></div><div><small>RUNNING</small><strong>${running}</strong></div><div><small>REQUESTS</small><strong>${instances.length}</strong></div></section><section class="panel workflow-diagram"><div class="panel-head"><div><h2>Definition</h2><p class="muted">Select any item to view details.</p></div></div><div class="graph-wrap" data-workflow-chart="${workflow.id}"></div></section>${nodeDetailDrawer(workflow)}`;
 }
 
 function nodeDetailDrawer(workflow) {
@@ -327,6 +380,18 @@ router
   .addRoute('/workflows', () => {
     state.view = 'workflows';
     state.workflowId = null;
+    state.selectedNodeKey = null;
+    render();
+  })
+  .addRoute('/workflows/new', () => {
+    state.view = 'workflow-new';
+    state.workflowId = null;
+    state.selectedNodeKey = null;
+    render();
+  })
+  .addRoute('/workflows/:id/edit', ({ params }) => {
+    state.view = 'workflow-edit';
+    state.workflowId = params.id;
     state.selectedNodeKey = null;
     render();
   })
