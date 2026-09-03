@@ -47,27 +47,28 @@ test('workflow chart expands horizontally when nodes cannot fit', () => {
   }
 });
 
-test('long and backward connectors route outside the node grid', () => {
+test('long and backward connectors use curved outer routes', () => {
   const long = routeConnector({ x: 100, y: 110 }, { x: 600, y: 220 }, 400, 0);
   const backward = routeConnector({ x: 600, y: 220 }, { x: 100, y: 110 }, 400, 1);
 
-  assert.match(long.path, /V30/);
-  assert.match(backward.path, /V30/);
-  assert.ok(!long.path.includes(' C'));
-  assert.ok(!backward.path.includes(' C'));
+  assert.match(long.path, /C[^C]+ 30/);
+  assert.match(backward.path, /C[^C]+ 30/);
+  assert.equal((long.path.match(/C/g) || []).length, 3);
+  assert.equal((backward.path.match(/C/g) || []).length, 3);
 });
 
-test('adjacent connectors use right-angle segments', () => {
+test('adjacent connectors use a fluid cubic curve', () => {
   const route = routeConnector({ x: 100, y: 80 }, { x: 290, y: 180 }, 300, 0, false);
 
-  assert.equal(route.path, 'M169 80 H195 V180 H221');
-  assert.ok(!route.path.includes(' C'));
+  assert.equal(route.path, 'M169 80 C195 80 195 180 221 180');
+  assert.ok(!route.path.includes(' H'));
+  assert.ok(!route.path.includes(' V'));
 });
 
 test('obstructed connectors choose the shortest outer lane', () => {
   const upperRoute = routeConnector({ x: 100, y: 90 }, { x: 600, y: 160 }, 400, 0, true);
   const lowerRoute = routeConnector({ x: 100, y: 300 }, { x: 600, y: 340 }, 400, 0, true);
 
-  assert.match(upperRoute.path, /V30/);
-  assert.match(lowerRoute.path, /V370/);
+  assert.match(upperRoute.path, /C[^C]+ 30/);
+  assert.match(lowerRoute.path, /C[^C]+ 370/);
 });

@@ -55,10 +55,10 @@ export function routeConnector(a, b, height, _index = 0, obstructed) {
 
   const needsDetour = obstructed ?? x2 - x1 > adjacentGap + 1;
   if (x2 > x1 && !needsDetour) {
-    const mid = (x1 + x2) / 2;
+    const curve = Math.max(45, Math.abs(b.x - a.x) / 2);
     return {
-      path: `M${x1} ${a.y} H${mid} V${b.y} H${x2}`,
-      labelX: mid,
+      path: `M${x1} ${a.y} C${a.x + curve} ${a.y} ${b.x - curve} ${b.y} ${x2} ${b.y}`,
+      labelX: (a.x + b.x) / 2,
       labelY: (a.y + b.y) / 2 - 8,
     };
   }
@@ -70,9 +70,10 @@ export function routeConnector(a, b, height, _index = 0, obstructed) {
   const lane = topDistance <= bottomDistance ? topLane : bottomLane;
   const sourceExit = x1 + 18;
   const targetEntry = x2 - 18;
+  const middle = (sourceExit + targetEntry) / 2;
   return {
-    path: `M${x1} ${a.y} H${sourceExit} V${lane} H${targetEntry} V${b.y} H${x2}`,
-    labelX: (sourceExit + targetEntry) / 2,
+    path: `M${x1} ${a.y} C${sourceExit} ${a.y} ${sourceExit} ${lane} ${sourceExit} ${lane} C${middle} ${lane} ${middle} ${lane} ${targetEntry} ${lane} C${targetEntry} ${lane} ${targetEntry} ${b.y} ${x2} ${b.y}`,
+    labelX: middle,
     labelY: lane - 8,
   };
 }
@@ -172,7 +173,7 @@ export class WorkflowChart {
           return position && position.x > a.x && position.x < b.x;
         });
         const { path } = routeConnector(a, b, height, index, obstructed);
-        return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" marker-end="url(#${marker})"/></g>`;
+        return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
       })
       .join('');
     const edgeDescriptionSvg = edges
