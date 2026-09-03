@@ -183,6 +183,16 @@ function render() {
       onBack() {
         router.navigate(existing ? `/workflows/${existing.id}` : '/workflows');
       },
+      onLayoutSave: existing
+        ? async (nodes) => {
+            const { workflow } = await api(`/api/workflows/${existing.id}/layout`, {
+              method: 'PATCH',
+              body: JSON.stringify({ nodes }),
+            });
+            const index = state.workflows.findIndex((item) => String(item.id) === String(existing.id));
+            if (index !== -1) state.workflows[index] = workflow;
+          }
+        : null,
       async onDeploy(definition) {
         const { workflow } = await api('/api/workflows', {
           method: 'POST',

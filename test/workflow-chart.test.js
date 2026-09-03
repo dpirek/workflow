@@ -47,28 +47,49 @@ test('workflow chart expands horizontally when nodes cannot fit', () => {
   }
 });
 
-test('long and backward connectors use curved outer routes', () => {
+test('workflow chart uses positions saved by the visual editor', () => {
+  const definition = {
+    nodes: [
+      { key: 'start', type: 'START', config: { x: 160, y: 420 } },
+      { key: 'review', type: 'USER_TASK', config: { x: 480, y: 120 } },
+      { key: 'end', type: 'END', config: { x: 840, y: 420 } },
+    ],
+    edges: [
+      { from: 'start', to: 'review' },
+      { from: 'review', to: 'end' },
+    ],
+  };
+
+  const layout = WorkflowChart.prototype.layout.call({ definition }, 800);
+
+  assert.equal(layout.manual, true);
+  assert.deepEqual(layout.positions.get('review'), { x: 480, y: 120 });
+  assert.equal(layout.width, 1000);
+  assert.equal(layout.height, 600);
+});
+
+test('long and backward connectors use the editor cubic renderer', () => {
   const long = routeConnector({ x: 100, y: 110 }, { x: 600, y: 220 }, 400, 0);
   const backward = routeConnector({ x: 600, y: 220 }, { x: 100, y: 110 }, 400, 1);
 
-  assert.match(long.path, /C[^C]+ 30/);
-  assert.match(backward.path, /C[^C]+ 30/);
-  assert.equal((long.path.match(/C/g) || []).length, 3);
-  assert.equal((backward.path.match(/C/g) || []).length, 3);
+  assert.equal(long.path, 'M 166 110 C 350 110, 350 220, 534 220');
+  assert.equal(backward.path, 'M 666 220 C 850 220, -150 110, 34 110');
+  assert.equal((long.path.match(/C/g) || []).length, 1);
+  assert.equal((backward.path.match(/C/g) || []).length, 1);
 });
 
 test('adjacent connectors use a fluid cubic curve', () => {
   const route = routeConnector({ x: 100, y: 80 }, { x: 290, y: 180 }, 300, 0, false);
 
-  assert.equal(route.path, 'M169 80 C195 80 195 180 221 180');
+  assert.equal(route.path, 'M 166 80 C 195 80, 195 180, 224 180');
   assert.ok(!route.path.includes(' H'));
   assert.ok(!route.path.includes(' V'));
 });
 
-test('obstructed connectors choose the shortest outer lane', () => {
+test('connector rendering is unaffected by display-only routing hints', () => {
   const upperRoute = routeConnector({ x: 100, y: 90 }, { x: 600, y: 160 }, 400, 0, true);
   const lowerRoute = routeConnector({ x: 100, y: 300 }, { x: 600, y: 340 }, 400, 0, true);
 
-  assert.match(upperRoute.path, /C[^C]+ 30/);
-  assert.match(lowerRoute.path, /C[^C]+ 370/);
+  assert.equal(upperRoute.path, 'M 166 90 C 350 90, 350 160, 534 160');
+  assert.equal(lowerRoute.path, 'M 166 300 C 350 300, 350 340, 534 340');
 });

@@ -168,6 +168,53 @@ test('ready work survives an engine and database restart', () => {
   }
 });
 
+test('updates visual node positions without changing workflow configuration', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'workflow-layout-'));
+  const path = join(directory, 'workflow.db');
+  let workflow = new WorkflowEngine(openDatabase(path));
+  try {
+    const deployed = workflow.deploy({
+      key: 'positioned',
+      name: 'Positioned',
+      nodes: [
+        { key: 'start', type: 'START', config: { x: 100, y: 200 } },
+        { key: 'work', type: 'SERVICE_TASK', workerType: 'email.send', retries: 5, config: { x: 400, y: 200 } },
+        { key: 'end', type: 'END', config: { x: 700, y: 200 } },
+      ],
+      edges: [
+        { from: 'start', to: 'work' },
+        { from: 'work', to: 'end' },
+      ],
+    });
+
+    const updated = workflow.updateDefinitionLayout(deployed.id, [
+      { key: 'start', x: 125.4, y: 305.7 },
+      { key: 'work', x: 510.2, y: 180.1 },
+      { key: 'end', x: 875.8, y: 305.2 },
+    ]);
+
+    assert.deepEqual(updated.nodes.map((node) => [node.key, node.config.x, node.config.y]), [
+      ['start', 125, 306],
+      ['work', 510, 180],
+      ['end', 876, 305],
+    ]);
+    assert.equal(updated.nodes[1].config.workerType, 'email.send');
+    assert.equal(updated.nodes[1].config.retries, 5);
+    assert.equal(updated.version, deployed.version);
+    workflow.close();
+    workflow = new WorkflowEngine(openDatabase(path));
+    const restored = workflow.getDefinition(deployed.id);
+    assert.deepEqual(restored.nodes.map((node) => [node.key, node.config.x, node.config.y]), [
+      ['start', 125, 306],
+      ['work', 510, 180],
+      ['end', 876, 305],
+    ]);
+  } finally {
+    workflow.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function serviceDefinition(key, retries = 3) {
   return {
     key,

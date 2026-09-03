@@ -57,6 +57,25 @@ export class WorkflowEngine {
     };
   }
 
+  updateDefinitionLayout(id, positions) {
+    if (!this.repo.getDefinitionById(id)) throw new Error(`Process definition ${id} not found`);
+    if (!Array.isArray(positions) || positions.length === 0) throw new Error('Layout nodes must be a non-empty array');
+    return withTransaction(this.db, () => {
+      const seen = new Set();
+      for (const position of positions) {
+        if (!position?.key || typeof position.key !== 'string') throw new Error('Every layout node requires a key');
+        if (seen.has(position.key)) throw new Error(`Duplicate layout node: ${position.key}`);
+        seen.add(position.key);
+        const x = Number(position.x), y = Number(position.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`Invalid position for node ${position.key}`);
+        const node = this.repo.findDefinitionNode(id, position.key);
+        if (!node) throw new Error(`Layout references unknown node: ${position.key}`);
+        this.repo.updateNodeConfig(node.id, { ...parseJson(node.config_json, {}), x: Math.round(x), y: Math.round(y) });
+      }
+      return this.getDefinition(id);
+    });
+  }
+
   listDefinitions(key) {
     return this.repo.listDefinitions(key).map((row) => ({
       id: row.id,

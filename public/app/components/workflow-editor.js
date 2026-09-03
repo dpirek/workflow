@@ -1,3 +1,5 @@
+import { fluidConnector, WORKFLOW_EDGE_COLOR } from './workflow-connectors.js';
+
 const NODE_TYPES = [
   ['START', 'Start', '○'],
   ['END', 'End', '◎'],
@@ -123,6 +125,7 @@ export class WorkflowEditor {
     this.root = root;
     this.onDeploy = options.onDeploy;
     this.onBack = options.onBack;
+    this.onLayoutSave = options.onLayoutSave;
     this.mode = options.mode || 'create';
     this.baseVersion = options.baseVersion;
     this.lockKey = Boolean(options.lockKey);
@@ -131,6 +134,8 @@ export class WorkflowEditor {
     this.connectingFrom = null;
     this.drag = null;
     this.submitting = false;
+    this.layoutSaveVersion = 0;
+    this.layoutSavePromise = Promise.resolve();
     this.render();
   }
 
@@ -147,7 +152,7 @@ export class WorkflowEditor {
       </div>
       <div class="builder-layout">
         <aside class="builder-palette" aria-label="Workflow nodes"><div><h2>Nodes</h2><p>Click to add to the canvas.</p></div>${NODE_TYPES.map(([type, label, icon]) => `<button type="button" data-add-node="${type}"><i>${escapeHtml(icon)}</i><span>${label}</span></button>`).join('')}</aside>
-        <section class="builder-canvas-panel"><div class="canvas-toolbar"><span>${this.draft.nodes.length} nodes · ${this.draft.edges.length} connections</span><span>${this.connectingFrom ? 'Select another node to connect' : 'Drag nodes to arrange'}</span></div><div class="builder-canvas" data-canvas>${this.svg()}</div></section>
+        <section class="builder-canvas-panel"><div class="canvas-toolbar"><span>${this.draft.nodes.length} nodes · ${this.draft.edges.length} connections</span><span data-layout-status>${this.connectingFrom ? 'Select another node to connect' : this.onLayoutSave ? 'Drag nodes to arrange · Autosave on' : 'Drag nodes to arrange'}</span></div><div class="builder-canvas" data-canvas>${this.svg()}</div></section>
         <aside class="builder-inspector">${this.inspector()}</aside>
       </div>
       <div class="builder-errors" data-errors hidden></div>
@@ -160,17 +165,16 @@ export class WorkflowEditor {
     const edges = this.draft.edges.map((edge, index) => {
       const from = nodeByKey.get(edge.from), to = nodeByKey.get(edge.to);
       if (!from || !to) return '';
-      const dx = Math.max(55, Math.abs(to.x - from.x) / 2);
-      const path = `M ${from.x + 66} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x - 66} ${to.y}`;
+      const { path, labelX, labelY } = fluidConnector(from, to);
       const selected = this.selected?.kind === 'edge' && this.selected.index === index;
-      return `<g class="editor-edge${selected ? ' selected' : ''}" data-edge="${index}"><path class="editor-edge-hit" d="${path}"/><path class="editor-edge-line" d="${path}" marker-end="url(#editor-arrow)"/>${edge.condition ? `<text x="${(from.x + to.x) / 2}" y="${(from.y + to.y) / 2 - 9}">${escapeHtml(edge.condition)}</text>` : ''}</g>`;
+      return `<g class="editor-edge${selected ? ' selected' : ''}" data-edge="${index}"><path class="editor-edge-hit" d="${path}"/><path class="editor-edge-line" d="${path}" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#editor-arrow)"/>${edge.condition ? `<text x="${labelX}" y="${labelY}">${escapeHtml(edge.condition)}</text>` : ''}</g>`;
     }).join('');
     const nodes = this.draft.nodes.map((node, index) => {
       const selected = this.selected?.kind === 'node' && this.selected.index === index;
       const icon = NODE_TYPES.find(([type]) => type === node.type)?.[2] || '◇';
       return `<g class="editor-node${selected ? ' selected' : ''}${this.connectingFrom === node.key ? ' connecting' : ''}" data-node="${index}" transform="translate(${node.x} ${node.y})" role="button" tabindex="0"><rect x="-66" y="-38" width="132" height="76" rx="${node.type.includes('GATEWAY') ? 28 : 12}" fill="${COLORS[node.type]}"/><text class="editor-node-icon" y="-10">${escapeHtml(icon)}</text><text class="editor-node-label" y="14">${escapeHtml(node.name.slice(0, 20))}</text><text class="editor-node-type" y="29">${node.type.replaceAll('_', ' ')}</text><circle class="editor-port" data-port="${index}" cx="66" cy="0" r="7"/></g>`;
     }).join('');
-    return `<svg class="workflow-editor-svg" viewBox="0 0 1000 600" aria-label="Workflow editor canvas"><defs><pattern id="editor-grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce5f2"/></pattern><marker id="editor-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#75869e"/></marker></defs><rect width="1000" height="600" fill="url(#editor-grid)"/>${edges}${nodes}</svg>`;
+    return `<svg class="workflow-editor-svg" viewBox="0 0 1000 600" aria-label="Workflow editor canvas"><defs><pattern id="editor-grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce5f2"/></pattern><marker id="editor-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="${WORKFLOW_EDGE_COLOR}"/></marker></defs><rect width="1000" height="600" fill="url(#editor-grid)"/>${edges}${nodes}</svg>`;
   }
 
   inspector() {
@@ -250,8 +254,8 @@ export class WorkflowEditor {
       });
     });
     svg.addEventListener('pointermove', (event) => this.nodePointerMove(event, svg));
-    svg.addEventListener('pointerup', () => { this.drag = null; });
-    svg.addEventListener('pointercancel', () => { this.drag = null; });
+    svg.addEventListener('pointerup', () => this.finishDrag());
+    svg.addEventListener('pointercancel', () => this.finishDrag());
     svg.addEventListener('pointerdown', (event) => {
       if (event.target === svg || event.target.tagName === 'rect' && !event.target.closest('[data-node]')) {
         this.selected = null;
@@ -304,12 +308,13 @@ export class WorkflowEditor {
     this.selected = { kind: 'node', index };
     const point = this.svgPoint(event, svg);
     const node = this.draft.nodes[index];
-    this.drag = { index, dx: point.x - node.x, dy: point.y - node.y };
+    this.drag = { index, dx: point.x - node.x, dy: point.y - node.y, moved: false };
     element.setPointerCapture?.(event.pointerId);
   }
 
   nodePointerMove(event, svg) {
     if (!this.drag) return;
+    this.drag.moved = true;
     const point = this.svgPoint(event, svg), node = this.draft.nodes[this.drag.index];
     node.x = Math.max(80, Math.min(920, point.x - this.drag.dx));
     node.y = Math.max(55, Math.min(545, point.y - this.drag.dy));
@@ -318,12 +323,38 @@ export class WorkflowEditor {
     this.refreshEdges(svg);
   }
 
+  finishDrag() {
+    const moved = this.drag?.moved;
+    this.drag = null;
+    if (moved) this.saveLayout();
+  }
+
+  saveLayout() {
+    if (!this.onLayoutSave) return;
+    const version = ++this.layoutSaveVersion;
+    const nodes = this.draft.nodes.map(({ key, x, y }) => ({ key, x: Math.round(x), y: Math.round(y) }));
+    this.setLayoutStatus('Saving layout…');
+    this.layoutSavePromise = this.layoutSavePromise
+      .catch(() => {})
+      .then(() => this.onLayoutSave(nodes))
+      .then(() => {
+        if (version === this.layoutSaveVersion) this.setLayoutStatus('Layout saved');
+      })
+      .catch((error) => {
+        if (version === this.layoutSaveVersion) this.setLayoutStatus(`Autosave failed: ${error.message}`);
+      });
+  }
+
+  setLayoutStatus(message) {
+    const status = this.root.querySelector('[data-layout-status]');
+    if (status) status.textContent = message;
+  }
+
   refreshEdges(svg) {
     const nodeByKey = new Map(this.draft.nodes.map((node) => [node.key, node]));
     this.draft.edges.forEach((edge, index) => {
       const from = nodeByKey.get(edge.from), to = nodeByKey.get(edge.to);
-      const dx = Math.max(55, Math.abs(to.x - from.x) / 2);
-      const path = `M ${from.x + 66} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x - 66} ${to.y}`;
+      const { path } = fluidConnector(from, to);
       svg.querySelectorAll(`[data-edge="${index}"] path`).forEach((item) => item.setAttribute('d', path));
     });
   }

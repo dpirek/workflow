@@ -75,6 +75,16 @@ export class WorkflowRepository {
     return this.db.prepare('SELECT * FROM process_definition WHERE id = ?').get(id);
   }
 
+  findDefinitionNode(definitionId, nodeKey) {
+    return this.db
+      .prepare('SELECT * FROM process_node WHERE process_definition_id = ? AND node_key = ?')
+      .get(definitionId, nodeKey);
+  }
+
+  updateNodeConfig(nodeId, config) {
+    this.db.prepare('UPDATE process_node SET config_json = ? WHERE id = ?').run(JSON.stringify(config), nodeId);
+  }
+
   findDefinition(key, version) {
     if (version !== undefined && version !== null) {
       return this.db

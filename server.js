@@ -120,6 +120,11 @@ const server = createServer(async (req, res) => {
         return json(res, 200, { workflows: engine.listDefinitions().map((item) => engine.getDefinition(item.id)) });
       if (path === '/api/workflows' && req.method === 'POST')
         return json(res, 201, { workflow: engine.deploy((await body(req)).definition) });
+      const workflowLayout = path.match(/^\/api\/workflows\/(\d+)\/layout$/);
+      if (workflowLayout && req.method === 'PATCH')
+        return json(res, 200, {
+          workflow: engine.updateDefinitionLayout(Number(workflowLayout[1]), (await body(req)).nodes),
+        });
       if (path === '/api/instances' && req.method === 'GET')
         return json(res, 200, { instances: engine.listProcessInstances({ limit: 100 }) });
       if (path === '/api/instances' && req.method === 'POST') {

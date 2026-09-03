@@ -1,3 +1,5 @@
+import { fluidConnector, WORKFLOW_EDGE_COLOR, WORKFLOW_NODE_WIDTH } from './workflow-connectors.js';
+
 const COLORS = {
   START: '#dff7e9',
   END: '#eef1f5',
@@ -20,7 +22,7 @@ const STROKES = {
   TIMER: '#4b91ed',
   MESSAGE: '#4b91ed',
 };
-const NODE_WIDTH = 138;
+const NODE_WIDTH = WORKFLOW_NODE_WIDTH;
 const NODE_HEIGHT = 68;
 const COLUMN_SPACING = 190;
 const escapeXml = (value) =>
@@ -48,34 +50,8 @@ function nodeIcon(type, x, y) {
   return `<g class="chart-node-icon" transform="translate(${x} ${y})" fill="none" stroke="${STROKES[type] || '#8795aa'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
 }
 
-export function routeConnector(a, b, height, _index = 0, obstructed) {
-  const x1 = a.x + NODE_WIDTH / 2;
-  const x2 = b.x - NODE_WIDTH / 2;
-  const adjacentGap = COLUMN_SPACING - NODE_WIDTH;
-
-  const needsDetour = obstructed ?? x2 - x1 > adjacentGap + 1;
-  if (x2 > x1 && !needsDetour) {
-    const curve = Math.max(45, Math.abs(b.x - a.x) / 2);
-    return {
-      path: `M${x1} ${a.y} C${a.x + curve} ${a.y} ${b.x - curve} ${b.y} ${x2} ${b.y}`,
-      labelX: (a.x + b.x) / 2,
-      labelY: (a.y + b.y) / 2 - 8,
-    };
-  }
-
-  const topLane = 30;
-  const bottomLane = height - 30;
-  const topDistance = Math.abs(a.y - topLane) + Math.abs(b.y - topLane);
-  const bottomDistance = Math.abs(a.y - bottomLane) + Math.abs(b.y - bottomLane);
-  const lane = topDistance <= bottomDistance ? topLane : bottomLane;
-  const sourceExit = x1 + 18;
-  const targetEntry = x2 - 18;
-  const middle = (sourceExit + targetEntry) / 2;
-  return {
-    path: `M${x1} ${a.y} C${sourceExit} ${a.y} ${sourceExit} ${lane} ${sourceExit} ${lane} C${middle} ${lane} ${middle} ${lane} ${targetEntry} ${lane} C${targetEntry} ${lane} ${targetEntry} ${b.y} ${x2} ${b.y}`,
-    labelX: middle,
-    labelY: lane - 8,
-  };
+export function routeConnector(a, b) {
+  return fluidConnector(a, b, NODE_WIDTH);
 }
 
 export class WorkflowChart {
@@ -103,6 +79,20 @@ export class WorkflowChart {
   layout(width) {
     const nodes = this.definition.nodes || [],
       edges = this.definition.edges || [];
+    const hasSavedLayout = nodes.length > 0 && nodes.every(
+      (node) => node.config && Number.isFinite(Number(node.config.x)) && Number.isFinite(Number(node.config.y)),
+    );
+    if (hasSavedLayout) {
+      return {
+        width: Math.max(width, 1000),
+        height: 600,
+        nodeWidth: NODE_WIDTH,
+        positions: new Map(nodes.map((node) => [node.key, { x: Number(node.config.x), y: Number(node.config.y) }])),
+        edges,
+        nodes,
+        manual: true,
+      };
+    }
     const incoming = new Map(nodes.map((n) => [n.key, []]));
     const outgoing = new Map(nodes.map((n) => [n.key, []]));
     edges.forEach((e) => {
@@ -153,7 +143,7 @@ export class WorkflowChart {
       const gapY = height / (list.length + 1);
       list.forEach((node, ri) => positions.set(node.key, { x: pad + nodeWidth / 2 + ci * gapX, y: gapY * (ri + 1) }));
     });
-    return { width: layoutWidth, height, nodeWidth, positions, edges, nodes };
+    return { width: layoutWidth, height, nodeWidth, positions, edges, nodes, manual: false };
   }
 
   render() {
@@ -168,12 +158,8 @@ export class WorkflowChart {
         const a = positions.get(edge.from),
           b = positions.get(edge.to);
         if (!a || !b) return '';
-        const obstructed = nodes.some((node) => {
-          const position = positions.get(node.key);
-          return position && position.x > a.x && position.x < b.x;
-        });
-        const { path } = routeConnector(a, b, height, index, obstructed);
-        return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="#8190a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
+        const { path } = routeConnector(a, b);
+        return `<g class="chart-edge" data-edge-index="${index}" tabindex="0"><path class="chart-edge-hit" d="${path}" fill="none" stroke="transparent" stroke-width="16"/><path class="chart-edge-line" d="${path}" fill="none" stroke="${WORKFLOW_EDGE_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${marker})"/></g>`;
       })
       .join('');
     const edgeDescriptionSvg = edges
@@ -182,11 +168,7 @@ export class WorkflowChart {
         const a = positions.get(edge.from),
           b = positions.get(edge.to);
         if (!a || !b) return '';
-        const obstructed = nodes.some((node) => {
-          const position = positions.get(node.key);
-          return position && position.x > a.x && position.x < b.x;
-        });
-        const { labelX: x, labelY: y } = routeConnector(a, b, height, index, obstructed),
+        const { labelX: x, labelY: y } = routeConnector(a, b),
           bubbleWidth = Math.max(64, Math.min(520, String(edge.condition).length * 6.5 + 32));
         return `<g class="chart-edge-description" data-edge-description="${index}" transform="translate(${x} ${y})"><rect x="${-bubbleWidth / 2}" y="-19" width="${bubbleWidth}" height="30" rx="7"/><text y="1">${escapeXml(edge.condition)}</text></g>`;
       })
@@ -198,7 +180,7 @@ export class WorkflowChart {
         return `<g class="chart-node chart-${node.type.toLowerCase()}" data-node-key="${escapeXml(node.key)}" role="button" tabindex="0" aria-label="View ${escapeXml(node.name || node.key)} details"><rect x="${p.x - nodeWidth / 2}" y="${p.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${radius}" fill="${COLORS[node.type] || '#eef1f5'}" stroke="${STROKES[node.type] || '#8795aa'}"/>${nodeIcon(node.type, p.x, p.y - 20)}<text class="chart-type" x="${p.x}" y="${p.y + 1}">${escapeXml(node.type.replaceAll('_', ' '))}</text><text class="chart-label" x="${p.x}" y="${p.y + 20}">${escapeXml((node.name || node.key).slice(0, 22))}</text></g>`;
       })
       .join('');
-    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8190a5"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}<g class="chart-edge-descriptions">${edgeDescriptionSvg}</g></svg>`;
+    this.container.innerHTML = `<svg class="workflow-svg" width="${layoutWidth}" height="${height}" viewBox="0 0 ${layoutWidth} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(this.definition.name)} workflow"><defs><marker id="${marker}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="${WORKFLOW_EDGE_COLOR}"/></marker></defs><g class="chart-edges">${edgeSvg}</g>${nodeSvg}<g class="chart-edge-descriptions">${edgeDescriptionSvg}</g></svg>`;
     this.bindInteractions();
   }
 
